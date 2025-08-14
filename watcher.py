@@ -8,11 +8,13 @@ from util import now_ts, chunked
 from user_resolver import resolve_steam_usernames, update_mod_author_names
 from logger import get_logger
 
-def poll_once(cfg: Dict, db_path: str) -> int:
+def poll_once(cfg: Dict, db_path: str, dry_run: bool = False) -> int:
     """Poll Steam Workshop once for mod updates."""
     logger = get_logger()
     logger.info("Starting polling cycle")
-    
+    if dry_run:
+        logger.info("Running in dry-run mode: no Discord webhooks will be sent")
+
     webhook = os.getenv("DISCORD_WEBHOOK_URL") or cfg.get("discord_webhook")
     if not webhook:
         logger.error("Discord webhook not provided (config or DISCORD_WEBHOOK_URL)")
@@ -46,7 +48,9 @@ def poll_once(cfg: Dict, db_path: str) -> int:
         logger.debug("Fetching mod details from Steam API")
         details = fetch_published_file_details(ids)
         logger.debug(f"Received details for {len(details)} mod(s)")
-        
+        # Cache normalized items so we don't recompute
+        normalized_cache: Dict[int, Dict] = {}
+
         # Collect author IDs for Steam user resolution and process mods
         author_ids_to_resolve: List[str] = []
         mods_to_process = []  # Store mod data for later processing
@@ -76,6 +80,7 @@ def poll_once(cfg: Dict, db_path: str) -> int:
                 continue
 
             norm = normalize_api_item(raw)
+            normalized_cache[mid] = norm
             known = get_known(conn, mid)
             old_updated = known[0] if known else None
 
@@ -103,20 +108,15 @@ def poll_once(cfg: Dict, db_path: str) -> int:
             logger.info(f"Resolving usernames for {len(unique_authors)} unique author(s)")
             try:
                 usernames = resolve_steam_usernames(conn, unique_authors, cfg)
-                
-                # Update mod records with resolved usernames
                 for mid in ids:
-                    raw = details.get(mid)
-                    if raw and int(raw.get("result", 0)) == 1:
-                        norm = normalize_api_item(raw)
-                        if norm.get("author_id") and norm["author_id"] in usernames:
-                            username = usernames[norm["author_id"]]
-                            if username:
-                                conn.execute(
-                                    "UPDATE mods SET author_name = ? WHERE id = ?",
-                                    (username, mid)
-                                )
-                                logger.debug(f"Updated author name for mod {mid}: {username}")
+                    if mid in normalized_cache:
+                        norm = normalized_cache[mid]
+                        if norm.get("author_id") and norm["author_id"] in usernames and usernames[norm["author_id"]]:
+                            conn.execute(
+                                "UPDATE mods SET author_name = ? WHERE id = ?",
+                                (usernames[norm["author_id"]], mid)
+                            )
+                            logger.debug(f"Updated author name for mod {mid}: {usernames[norm['author_id']]}")
             except Exception as e:
                 logger.error(f"Failed to resolve Steam usernames: {e}", exc_info=True)
 
@@ -135,35 +135,21 @@ def poll_once(cfg: Dict, db_path: str) -> int:
         for mod_info in mods_to_process:
             if mod_info["has_update"]:
                 try:
-                    # Get the updated mod data from database (with resolved author_name)
                     cur = conn.execute(
                         "SELECT id, title, author_id, author_name, file_size, time_created, time_updated, "
                         "description, views, subscriptions, favorites, tags, visibility, preview_url "
-                        "FROM mods WHERE id = ?", 
+                        "FROM mods WHERE id = ?",
                         (mod_info["mid"],)
                     )
                     row = cur.fetchone()
                     if row:
-                        # Convert database row to dict
                         mod_data = {
-                            "id": row[0],
-                            "title": row[1],
-                            "author_id": row[2],
-                            "author_name": row[3],
-                            "file_size": row[4],
-                            "time_created": row[5],
-                            "time_updated": row[6],
-                            "description": row[7],
-                            "views": row[8],
-                            "subscriptions": row[9],
-                            "favorites": row[10],
-                            "tags": row[11],
-                            "visibility": row[12],
-                            "preview_url": row[13],
+                            "id": row[0], "title": row[1], "author_id": row[2], "author_name": row[3],
+                            "file_size": row[4], "time_created": row[5], "time_updated": row[6],
+                            "description": row[7], "views": row[8], "subscriptions": row[9],
+                            "favorites": row[10], "tags": row[11], "visibility": row[12], "preview_url": row[13],
                         }
                         embed = build_embed(mod_data, alias_map, mod_info["old_updated"])
-                        
-                        # Determine if this is a new mod or an update
                         if mod_info["old_updated"] is None:
                             new_embeds.append(embed)
                         else:
@@ -178,33 +164,41 @@ def poll_once(cfg: Dict, db_path: str) -> int:
         
         # Send notifications for new mods
         if new_embeds:
-            logger.info(f"Sending notifications for {len(new_embeds)} new mod(s)")
-            successes = 0
-            for chunk in chunked(new_embeds, 10):
-                chunk_size = len(chunk)
-                content_msg = f"Workshop mod added" if chunk_size == 1 else f"Workshop mods added"
-                if send_discord(webhook, content=content_msg, embeds=chunk):
-                    successes += len(chunk)
-                else:
-                    logger.error(f"Failed to send {chunk_size} new mod notification(s)")
-            if successes:
-                logger.info(f"Successfully notified {successes} new mod(s)")
-                total_notifications += successes
+            logger.info(f"Preparing notifications for {len(new_embeds)} new mod(s)")
+            if not dry_run:
+                successes = 0
+                for chunk in chunked(new_embeds, 10):
+                    chunk_size = len(chunk)
+                    content_msg = "Workshop mod added" if chunk_size == 1 else "Workshop mods added"
+                    if send_discord(webhook, content=content_msg, embeds=chunk, dry_run=dry_run):
+                        successes += len(chunk)
+                    else:
+                        logger.error(f"Failed to send {chunk_size} new mod notification(s)")
+                if successes:
+                    logger.info(f"Successfully notified {successes} new mod(s)")
+                    total_notifications += successes
+            else:
+                logger.info("Dry-run: skipping Discord send for new mods")
+                total_notifications += len(new_embeds)
 
         # Send notifications for updated mods
         if updated_embeds:
-            logger.info(f"Sending notifications for {len(updated_embeds)} updated mod(s)")
-            successes = 0
-            for chunk in chunked(updated_embeds, 10):
-                chunk_size = len(chunk)
-                content_msg = f"Workshop mod updated" if chunk_size == 1 else f"Workshop mods updated"
-                if send_discord(webhook, content=content_msg, embeds=chunk):
-                    successes += len(chunk)
-                else:
-                    logger.error(f"Failed to send {chunk_size} update notification(s)")
-            if successes:
-                logger.info(f"Successfully notified {successes} update(s)")
-                total_notifications += successes
+            logger.info(f"Preparing notifications for {len(updated_embeds)} updated mod(s)")
+            if not dry_run:
+                successes = 0
+                for chunk in chunked(updated_embeds, 10):
+                    chunk_size = len(chunk)
+                    content_msg = "Workshop mod updated" if chunk_size == 1 else "Workshop mods updated"
+                    if send_discord(webhook, content=content_msg, embeds=chunk, dry_run=dry_run):
+                        successes += len(chunk)
+                    else:
+                        logger.error(f"Failed to send {chunk_size} update notification(s)")
+                if successes:
+                    logger.info(f"Successfully notified {successes} update(s)")
+                    total_notifications += successes
+            else:
+                logger.info("Dry-run: skipping Discord send for updated mods")
+                total_notifications += len(updated_embeds)
 
         if total_notifications == 0:
             logger.info("No updates detected")
