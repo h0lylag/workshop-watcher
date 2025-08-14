@@ -7,6 +7,7 @@ import time
 from urllib.error import HTTPError, URLError
 from typing import Dict, List, Optional
 from steam import WORKSHOP_ITEM_URL, WORKSHOP_CHANGELOG_URL
+from logger import get_logger
 
 def ts_to_discord(ts: int) -> str:
     return f"<t:{ts}:R>"
@@ -29,9 +30,23 @@ def human_size(n: Optional[object]) -> str:
 
 def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None, max_retries: int = 5) -> bool:
     """Send a Discord webhook with rate limit handling and exponential backoff retry."""
+    logger = get_logger()
+    
+    if not webhook:
+        logger.error("Discord webhook URL is empty")
+        return False
+    
+    if not webhook.startswith(('http://', 'https://')):
+        logger.error(f"Invalid Discord webhook URL format: {webhook[:50]}...")
+        return False
+    
     body = {"content": content}
     if embeds:
         body["embeds"] = embeds
+        logger.debug(f"Sending Discord message with {len(embeds)} embed(s)")
+    else:
+        logger.debug("Sending Discord message without embeds")
+    
     data = json.dumps(body).encode("utf-8")
     
     for attempt in range(max_retries):
@@ -45,8 +60,10 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None
         )
         
         try:
+            logger.debug(f"Attempting Discord webhook (attempt {attempt + 1}/{max_retries})")
             with urllib.request.urlopen(req, timeout=30) as resp:
                 _ = resp.read()
+            logger.info("Discord webhook sent successfully")
             return True
             
         except HTTPError as e:
@@ -56,11 +73,11 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None
                     retry_after = e.headers.get('Retry-After')
                     if retry_after:
                         retry_delay = float(retry_after)
-                        print(f"Discord rate limited. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}...", file=sys.stderr)
+                        logger.warning(f"Discord rate limited. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
                     else:
                         # Exponential backoff if no Retry-After header
                         retry_delay = min(2 ** attempt, 60)  # Cap at 60 seconds
-                        print(f"Discord rate limited (no retry-after header). Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}...", file=sys.stderr)
+                        logger.warning(f"Discord rate limited (no retry-after header). Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
                     
                     time.sleep(retry_delay)
                     continue  # Retry the request
@@ -68,13 +85,13 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None
                 except (ValueError, TypeError):
                     # Fallback to exponential backoff if Retry-After header is invalid
                     retry_delay = min(2 ** attempt, 60)
-                    print(f"Discord rate limited (invalid retry-after header). Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}...", file=sys.stderr)
+                    logger.warning(f"Discord rate limited (invalid retry-after header). Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
                     time.sleep(retry_delay)
                     continue
                     
             elif e.code >= 500:  # Server errors - retry with exponential backoff
                 retry_delay = min(2 ** attempt, 30)  # Cap at 30 seconds for server errors
-                print(f"Discord server error {e.code}. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}...", file=sys.stderr)
+                logger.warning(f"Discord server error {e.code}. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
                 time.sleep(retry_delay)
                 continue
                 
@@ -83,105 +100,130 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None
                     err_body = e.read().decode("utf-8", errors="replace")
                 except Exception:
                     err_body = "<no body>"
-                print(f"Discord webhook HTTP error {e.code}: {e.reason} body={err_body[:300]}", file=sys.stderr)
+                logger.error(f"Discord webhook HTTP error {e.code}: {e.reason} body={err_body[:300]}")
                 return False
                 
         except URLError as e:
             # Network/connection errors - retry with exponential backoff
             retry_delay = min(2 ** attempt, 30)
-            print(f"Discord webhook connection error: {e.reason}. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}...", file=sys.stderr)
+            logger.warning(f"Discord webhook connection error: {e.reason}. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
             time.sleep(retry_delay)
             continue
             
         except Exception as e:
             # Unexpected errors - retry with exponential backoff
             retry_delay = min(2 ** attempt, 30)
-            print(f"Discord webhook unexpected error: {e}. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}...", file=sys.stderr)
+            logger.warning(f"Discord webhook unexpected error: {e}. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
             time.sleep(retry_delay)
             continue
     
-    print(f"Discord webhook failed after {max_retries} attempts", file=sys.stderr)
+    logger.error(f"Discord webhook failed after {max_retries} attempts")
     return False
 
 def build_embed(entry: Dict, alias_map: Dict[int, str], old_updated: Optional[int]) -> Dict:
-    mid = entry["id"]
-    alias = alias_map.get(mid)
-    title = entry.get("title") or f"Workshop Item {mid}"
+    """Build a Discord embed for a workshop mod."""
+    logger = get_logger()
     
-    # Limit title length to prevent embed size issues
-    if len(title) > 100:
-        title = title[:100] + "..."
-    
-    display_title = f"{title} · ({alias})" if alias and alias != title else title
-    updated = entry.get("time_updated")
-    created = entry.get("time_created")
-    filesize = entry.get("file_size")
-    author_name = entry.get("author_name")
-    author_id = entry.get("author_id")
-    preview_url = entry.get("preview_url")
-    
-    # Create author display - prefer name with profile link, fallback to profile link only, then unknown
-    if author_name and author_id:
-        author_display = f"[{author_name}](https://steamcommunity.com/profiles/{author_id})"
-    elif author_name:
-        author_display = author_name
-    elif author_id:
-        author_display = f"[{author_id}](https://steamcommunity.com/profiles/{author_id})"
-    else:
-        author_display = "Unknown"
-    
-    # Additional stats
-    views = entry.get("views")
-    subscriptions = entry.get("subscriptions")
-    favorites = entry.get("favorites")
-    tags = entry.get("tags")
+    try:
+        mid = entry["id"]
+        alias = alias_map.get(mid)
+        title = entry.get("title") or f"Workshop Item {mid}"
+        
+        # Limit title length to prevent embed size issues
+        if len(title) > 100:
+            title = title[:100] + "..."
+            logger.debug(f"Truncated long title for mod {mid}")
+        
+        display_title = f"{title} · ({alias})" if alias and alias != title else title
+        updated = entry.get("time_updated")
+        created = entry.get("time_created")
+        filesize = entry.get("file_size")
+        author_name = entry.get("author_name")
+        author_id = entry.get("author_id")
+        preview_url = entry.get("preview_url")
+        
+        logger.debug(f"Building embed for mod {mid}: {title}")
+        
+        # Create author display - prefer name with profile link, fallback to profile link only, then unknown
+        if author_name and author_id:
+            author_display = f"[{author_name}](https://steamcommunity.com/profiles/{author_id})"
+        elif author_name:
+            author_display = author_name
+        elif author_id:
+            author_display = f"[{author_id}](https://steamcommunity.com/profiles/{author_id})"
+        else:
+            author_display = "Unknown"
+        
+        # Additional stats
+        views = entry.get("views")
+        subscriptions = entry.get("subscriptions")
+        favorites = entry.get("favorites")
+        tags = entry.get("tags")
 
-    fields = [
-        {"name": "Updated", "value": ts_to_discord(updated) if updated else "n/a", "inline": True},
-        {"name": "Created", "value": ts_to_discord(created) if created else "n/a", "inline": True},
-        {"name": "File size", "value": human_size(filesize), "inline": True},
-        {"name": "Changelog", "value": f"[View changelog](https://steamcommunity.com/sharedfiles/filedetails/changelog/{mid})", "inline": True},
-    ]
-    
-    # Add stats if available
-    if views is not None or subscriptions is not None or favorites is not None:
-        stats_value = []
-        if views is not None:
-            stats_value.append(f"{views:,} views")
-        if subscriptions is not None:
-            stats_value.append(f"{subscriptions:,} subs")
-        if favorites is not None:
-            stats_value.append(f"{favorites:,} favs")
-        if stats_value:
-            fields.append({"name": "Stats", "value": " • ".join(stats_value), "inline": True})
-    
-    # Add author field
-    fields.append({"name": "Creator", "value": author_display, "inline": True})
-    
-    if old_updated and updated and updated != old_updated:
-        fields.append({"name": "Prev. update", "value": ts_to_discord(old_updated), "inline": True})
+        fields = [
+            {"name": "Updated", "value": ts_to_discord(updated) if updated else "n/a", "inline": True},
+            {"name": "Created", "value": ts_to_discord(created) if created else "n/a", "inline": True},
+            {"name": "File size", "value": human_size(filesize), "inline": True},
+            {"name": "Changelog", "value": f"[View changelog](https://steamcommunity.com/sharedfiles/filedetails/changelog/{mid})", "inline": True},
+        ]
+        
+        # Add stats if available
+        if views is not None or subscriptions is not None or favorites is not None:
+            stats_value = []
+            if views is not None:
+                stats_value.append(f"{views:,} views")
+            if subscriptions is not None:
+                stats_value.append(f"{subscriptions:,} subs")
+            if favorites is not None:
+                stats_value.append(f"{favorites:,} favs")
+            if stats_value:
+                fields.append({"name": "Stats", "value": " • ".join(stats_value), "inline": True})
+        
+        # Add author field
+        fields.append({"name": "Creator", "value": author_display, "inline": True})
+        
+        if old_updated and updated and updated != old_updated:
+            fields.append({"name": "Prev. update", "value": ts_to_discord(old_updated), "inline": True})
 
-    # Create footer text with creator ID if available
-    footer_text = f"Workshop ID: {mid}"
-    if author_id:
-        footer_text += f" • Creator ID: {author_id}"
+        # Create footer text with creator ID if available
+        footer_text = f"Workshop ID: {mid}"
+        if author_id:
+            footer_text += f" • Creator ID: {author_id}"
 
-    # Truncate description to 200 characters with ellipsis if needed
-    description = entry.get("description") or ""
-    if len(description) > 200:
-        description = description[:200] + "..."
+        # Truncate description to 200 characters with ellipsis if needed
+        description = entry.get("description") or ""
+        if len(description) > 200:
+            description = description[:200] + "..."
+            logger.debug(f"Truncated long description for mod {mid}")
 
-    embed = {
-        "title": display_title,
-        "url": WORKSHOP_ITEM_URL.format(id=mid),
-        "description": description,
-        "color": 0x2ecc71,
-        "fields": fields,
-        "footer": {"text": footer_text},
-    }
-    
-    # Add image if preview URL is available
-    if preview_url:
-        embed["image"] = {"url": preview_url}
-    
-    return embed
+        embed = {
+            "title": display_title,
+            "url": WORKSHOP_ITEM_URL.format(id=mid),
+            "description": description,
+            "color": 0x2ecc71,
+            "fields": fields,
+            "footer": {"text": footer_text},
+        }
+        
+        # Add image if preview URL is available
+        if preview_url:
+            embed["image"] = {"url": preview_url}
+        
+        # Calculate approximate embed size for debugging
+        embed_size = len(json.dumps(embed))
+        if embed_size > 5000:  # Warn if approaching Discord's 6000 char limit
+            logger.warning(f"Large embed for mod {mid}: {embed_size} characters")
+        else:
+            logger.debug(f"Embed for mod {mid}: {embed_size} characters")
+        
+        return embed
+        
+    except Exception as e:
+        logger.error(f"Failed to build embed for mod {entry.get('id', 'unknown')}: {e}", exc_info=True)
+        # Return minimal embed on error
+        return {
+            "title": f"Workshop Item {entry.get('id', 'unknown')}",
+            "description": "Error building embed",
+            "color": 0xe74c3c,  # Red color for error
+            "footer": {"text": f"Workshop ID: {entry.get('id', 'unknown')}"}
+        }
