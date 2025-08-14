@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Set
 from db import get_steam_user, upsert_steam_user, mark_steam_user_fetch_failed
 from steam import fetch_steam_user_summaries, normalize_steam_user
 from util import now_ts
+from logger import get_logger
 
 # Cache user data for 7 days (604800 seconds)
 USER_CACHE_DURATION = 604800
@@ -21,13 +22,18 @@ def resolve_steam_usernames(conn: sqlite3.Connection, steam_ids: List[str], cfg:
     Returns:
         Dict mapping Steam ID to username (or None if resolution failed)
     """
+    logger = get_logger()
+    
     if not steam_ids:
+        logger.debug("No Steam IDs provided for resolution")
         return {}
+    
+    logger.debug(f"Resolving usernames for {len(steam_ids)} Steam ID(s)")
     
     # Get Steam API key from config or environment
     api_key = cfg.get("steam_api_key") or os.getenv("STEAM_API_KEY")
     if not api_key:
-        print("Warning: No Steam API key found in config or STEAM_API_KEY environment variable")
+        logger.warning("No Steam API key found in config or STEAM_API_KEY environment variable")
         return {steam_id: None for steam_id in steam_ids}
     
     results: Dict[str, Optional[str]] = {}
@@ -36,28 +42,38 @@ def resolve_steam_usernames(conn: sqlite3.Connection, steam_ids: List[str], cfg:
     
     # Check cache for each Steam ID
     for steam_id in steam_ids:
-        cached_user = get_steam_user(conn, steam_id)
-        
-        if cached_user:
-            persona_name, real_name, profile_url, avatar_url, last_fetched, fetch_failed = cached_user
+        try:
+            cached_user = get_steam_user(conn, steam_id)
             
-            # Check if cache is still valid
-            if (current_time - last_fetched) < USER_CACHE_DURATION:
-                if fetch_failed:
-                    # Previous fetch failed and cache is still valid, don't retry
-                    results[steam_id] = None
+            if cached_user:
+                persona_name, real_name, profile_url, avatar_url, last_fetched, fetch_failed = cached_user
+                
+                # Check if cache is still valid
+                if (current_time - last_fetched) < USER_CACHE_DURATION:
+                    if fetch_failed:
+                        # Previous fetch failed and cache is still valid, don't retry
+                        logger.debug(f"Using cached failed fetch for Steam ID {steam_id}")
+                        results[steam_id] = None
+                    else:
+                        # Use cached username
+                        logger.debug(f"Using cached username for Steam ID {steam_id}: {persona_name}")
+                        results[steam_id] = persona_name
                 else:
-                    # Use cached username
-                    results[steam_id] = persona_name
+                    # Cache expired, need to refetch
+                    logger.debug(f"Cache expired for Steam ID {steam_id}, will refetch")
+                    ids_to_fetch.add(steam_id)
             else:
-                # Cache expired, need to refetch
+                # No cache entry, need to fetch
+                logger.debug(f"No cache entry for Steam ID {steam_id}, will fetch")
                 ids_to_fetch.add(steam_id)
-        else:
-            # No cache entry, need to fetch
+                
+        except Exception as e:
+            logger.error(f"Error checking cache for Steam ID {steam_id}: {e}")
             ids_to_fetch.add(steam_id)
     
     # Fetch user data for IDs not in cache or with expired cache
     if ids_to_fetch:
+        logger.info(f"Fetching user data for {len(ids_to_fetch)} Steam ID(s)")
         try:
             user_summaries = fetch_steam_user_summaries(list(ids_to_fetch), api_key)
             
@@ -67,21 +83,27 @@ def resolve_steam_usernames(conn: sqlite3.Connection, steam_ids: List[str], cfg:
                     user_data = normalize_steam_user(user_summaries[steam_id])
                     upsert_steam_user(conn, user_data)
                     results[steam_id] = user_data["persona_name"]
+                    logger.debug(f"Resolved Steam ID {steam_id} to username: {user_data['persona_name']}")
                 else:
                     # Failed to fetch user data
+                    logger.warning(f"Failed to fetch user data for Steam ID {steam_id}")
                     mark_steam_user_fetch_failed(conn, steam_id)
                     results[steam_id] = None
                     
             # Commit the database changes
             conn.commit()
+            logger.debug("Committed user data changes to database")
             
         except Exception as e:
-            print(f"Error fetching Steam user data: {e}")
+            logger.error(f"Error fetching Steam user data: {e}", exc_info=True)
             # Mark all failed fetches
             for steam_id in ids_to_fetch:
                 mark_steam_user_fetch_failed(conn, steam_id)
                 results[steam_id] = None
             conn.commit()
+    
+    successful_resolutions = sum(1 for v in results.values() if v is not None)
+    logger.info(f"Successfully resolved {successful_resolutions} out of {len(steam_ids)} Steam ID(s)")
     
     return results
 
