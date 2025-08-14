@@ -34,23 +34,19 @@ CREATE TABLE IF NOT EXISTS steam_users (
 CREATE INDEX IF NOT EXISTS idx_users_last_fetched ON steam_users(last_fetched);
 """
 
+# Module-level logger
+logger = get_logger()
+
 def connect_db(path: str) -> sqlite3.Connection:
     """Connect to SQLite database and initialize schema."""
-    logger = get_logger()
-    
     try:
         logger.debug(f"Connecting to database: {path}")
-        conn = sqlite3.connect(path)
+        conn = sqlite3.connect(path, timeout=30)
+        conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON;")
-        
-        # Initialize database schema
-        for stmt in DB_SCHEMA.strip().split(";"):
-            if stmt.strip():
-                conn.execute(stmt)
-        
+        conn.executescript(DB_SCHEMA)
         logger.debug("Database connection established and schema initialized")
         return conn
-        
     except sqlite3.Error as e:
         logger.error(f"Failed to connect to database {path}: {e}")
         raise
