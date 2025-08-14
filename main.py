@@ -16,6 +16,7 @@ def parse_args():
     ap.add_argument("--db", default="mods.db", help="Path to SQLite database (default: mods.db)")
     ap.add_argument("--watch", type=int, help="Interval seconds to poll repeatedly (omit to run once)")
     ap.add_argument("--update-authors", action="store_true", help="Update author names for existing mods and exit")
+    ap.add_argument("--dry-run", action="store_true", help="Poll and build embeds but do not send Discord webhooks")
     ap.add_argument("--log-file", default="workshop-watcher.log", help="Path to log file (default: workshop-watcher.log)")
     ap.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Logging level (default: INFO)")
     ap.add_argument("--no-console", action="store_true", help="Disable console output (log to file only)")
@@ -67,22 +68,28 @@ def main():
             sys.exit(1)
 
     if args.watch and args.watch > 0:
-        logger.info(f"Starting watch mode with {args.watch} second intervals")
-        while True:
-            try:
-                poll_once(cfg, args.db)
-            except KeyboardInterrupt:
-                logger.info("Received interrupt signal, shutting down gracefully")
-                break
-            except Exception as e:
-                logger.error(f"Polling error: {e}", exc_info=True)
-            
-            logger.debug(f"Sleeping for {args.watch} seconds")
-            time.sleep(args.watch)
-    else:
-        logger.info("Running single poll")
+        logger.info(f"Starting watch mode with {args.watch} second intervals (dry-run={'yes' if args.dry_run else 'no'})")
         try:
-            rc = poll_once(cfg, args.db)
+            while True:
+                try:
+                    poll_once(cfg, args.db, dry_run=args.dry_run)
+                except KeyboardInterrupt:
+                    logger.info("Received interrupt signal, stopping after current cycle")
+                    break
+                except Exception as e:
+                    logger.error(f"Polling error: {e}", exc_info=True)
+                logger.debug(f"Sleeping for {args.watch} seconds")
+                try:
+                    time.sleep(args.watch)
+                except KeyboardInterrupt:
+                    logger.info("Interrupted during sleep, exiting cleanly")
+                    break
+        except KeyboardInterrupt:
+            logger.info("Shutdown requested, exiting")
+    else:
+        logger.info(f"Running single poll (dry-run={'yes' if args.dry_run else 'no'})")
+        try:
+            rc = poll_once(cfg, args.db, dry_run=args.dry_run)
             logger.info("Single poll completed successfully")
             sys.exit(rc)
         except Exception as e:
