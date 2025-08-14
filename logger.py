@@ -9,7 +9,7 @@ from typing import Optional
 
 def setup_logging(
     log_file: Optional[str] = None,
-    log_level: str = "INFO",
+    log_level: str = "DEBUG",
     console_output: bool = True,
     max_bytes: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5
