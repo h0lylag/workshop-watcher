@@ -9,6 +9,9 @@ from typing import Dict, List, Optional
 from steam import WORKSHOP_ITEM_URL, WORKSHOP_CHANGELOG_URL
 from logger import get_logger
 
+# Module-level logger
+logger = get_logger()
+
 def ts_to_discord(ts: int) -> str:
     return f"<t:{ts}:R>"
 
@@ -28,9 +31,13 @@ def human_size(n: Optional[object]) -> str:
         n /= 1024
     return f"{n:.1f} EB"
 
-def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None, max_retries: int = 5) -> bool:
-    """Send a Discord webhook with rate limit handling and exponential backoff retry."""
-    logger = get_logger()
+def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None, max_retries: int = 5, dry_run: bool = False) -> bool:
+    """Send a Discord webhook with rate limit handling and exponential backoff retry.
+    If dry_run is True, logs the payload and returns success without sending."""
+    
+    if dry_run:
+        logger.info(f"[dry-run] Would send Discord message: content='{content}' embeds={len(embeds) if embeds else 0}")
+        return True
     
     if not webhook:
         logger.error("Discord webhook URL is empty")
@@ -122,7 +129,6 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None
 
 def build_embed(entry: Dict, alias_map: Dict[int, str], old_updated: Optional[int]) -> Dict:
     """Build a Discord embed for a workshop mod."""
-    logger = get_logger()
     
     try:
         mid = entry["id"]
@@ -164,7 +170,7 @@ def build_embed(entry: Dict, alias_map: Dict[int, str], old_updated: Optional[in
             {"name": "Updated", "value": ts_to_discord(updated) if updated else "n/a", "inline": True},
             {"name": "Created", "value": ts_to_discord(created) if created else "n/a", "inline": True},
             {"name": "File size", "value": human_size(filesize), "inline": True},
-            {"name": "Changelog", "value": f"[View changelog](https://steamcommunity.com/sharedfiles/filedetails/changelog/{mid})", "inline": True},
+            {"name": "Changelog", "value": f"[View changelog]({WORKSHOP_CHANGELOG_URL.format(id=mid)})", "inline": True},
         ]
         
         # Add stats if available
@@ -190,10 +196,15 @@ def build_embed(entry: Dict, alias_map: Dict[int, str], old_updated: Optional[in
         if author_id:
             footer_text += f" • Creator ID: {author_id}"
 
-        # Truncate description to 200 characters with ellipsis if needed
+        # Truncate description to 200 characters with word boundary
         description = entry.get("description") or ""
         if len(description) > 200:
-            description = description[:200] + "..."
+            truncated = description[:200]
+            # ensure we cut at last whitespace if possible
+            cut = truncated.rfind(" ")
+            if cut > 150:  # only cut if we have a reasonable word boundary near end
+                truncated = truncated[:cut]
+            description = truncated + "..."
             logger.debug(f"Truncated long description for mod {mid}")
 
         embed = {
@@ -220,10 +231,9 @@ def build_embed(entry: Dict, alias_map: Dict[int, str], old_updated: Optional[in
         
     except Exception as e:
         logger.error(f"Failed to build embed for mod {entry.get('id', 'unknown')}: {e}", exc_info=True)
-        # Return minimal embed on error
         return {
             "title": f"Workshop Item {entry.get('id', 'unknown')}",
             "description": "Error building embed",
-            "color": 0xe74c3c,  # Red color for error
+            "color": 0xe74c3c,
             "footer": {"text": f"Workshop ID: {entry.get('id', 'unknown')}"}
         }
