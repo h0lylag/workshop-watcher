@@ -1,5 +1,6 @@
 import sqlite3
 from util import now_ts
+from logger import get_logger
 
 DB_SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -34,53 +35,81 @@ CREATE INDEX IF NOT EXISTS idx_users_last_fetched ON steam_users(last_fetched);
 """
 
 def connect_db(path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
-    conn.execute("PRAGMA foreign_keys=ON;")
-    for stmt in DB_SCHEMA.strip().split(";"):
-        if stmt.strip():
-            conn.execute(stmt)
-    return conn
+    """Connect to SQLite database and initialize schema."""
+    logger = get_logger()
+    
+    try:
+        logger.debug(f"Connecting to database: {path}")
+        conn = sqlite3.connect(path)
+        conn.execute("PRAGMA foreign_keys=ON;")
+        
+        # Initialize database schema
+        for stmt in DB_SCHEMA.strip().split(";"):
+            if stmt.strip():
+                conn.execute(stmt)
+        
+        logger.debug("Database connection established and schema initialized")
+        return conn
+        
+    except sqlite3.Error as e:
+        logger.error(f"Failed to connect to database {path}: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error connecting to database {path}: {e}")
+        raise
 
 def upsert_mod(conn: sqlite3.Connection, row):
-    conn.execute(
-        """
-        INSERT INTO mods (id, title, author_id, author_name, file_size, time_created, time_updated, last_checked,
-                         description, views, subscriptions, favorites, tags, visibility, preview_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-            title=excluded.title,
-            author_id=excluded.author_id,
-            author_name=excluded.author_name,
-            file_size=excluded.file_size,
-            time_created=excluded.time_created,
-            time_updated=excluded.time_updated,
-            last_checked=excluded.last_checked,
-            description=excluded.description,
-            views=excluded.views,
-            subscriptions=excluded.subscriptions,
-            favorites=excluded.favorites,
-            tags=excluded.tags,
-            visibility=excluded.visibility,
-            preview_url=excluded.preview_url
-        """,
-        (
-            row["id"],
-            row.get("title"),
-            row.get("author_id"),
-            row.get("author_name"),
-            row.get("file_size"),
-            row.get("time_created"),
-            row.get("time_updated"),
-            row.get("last_checked"),
-            row.get("description"),
-            row.get("views"),
-            row.get("subscriptions"),
-            row.get("favorites"),
-            row.get("tags"),
-            row.get("visibility"),
-            row.get("preview_url"),
-        ),
-    )
+    """Insert or update mod data in the database."""
+    logger = get_logger()
+    
+    try:
+        conn.execute(
+            """
+            INSERT INTO mods (id, title, author_id, author_name, file_size, time_created, time_updated, last_checked,
+                             description, views, subscriptions, favorites, tags, visibility, preview_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                title=excluded.title,
+                author_id=excluded.author_id,
+                author_name=excluded.author_name,
+                file_size=excluded.file_size,
+                time_created=excluded.time_created,
+                time_updated=excluded.time_updated,
+                last_checked=excluded.last_checked,
+                description=excluded.description,
+                views=excluded.views,
+                subscriptions=excluded.subscriptions,
+                favorites=excluded.favorites,
+                tags=excluded.tags,
+                visibility=excluded.visibility,
+                preview_url=excluded.preview_url
+            """,
+            (
+                row["id"],
+                row.get("title"),
+                row.get("author_id"),
+                row.get("author_name"),
+                row.get("file_size"),
+                row.get("time_created"),
+                row.get("time_updated"),
+                row.get("last_checked"),
+                row.get("description"),
+                row.get("views"),
+                row.get("subscriptions"),
+                row.get("favorites"),
+                row.get("tags"),
+                row.get("visibility"),
+                row.get("preview_url"),
+            ),
+        )
+        logger.debug(f"Upserted mod {row['id']}: {row.get('title', 'Unknown')}")
+        
+    except sqlite3.Error as e:
+        logger.error(f"Failed to upsert mod {row.get('id', 'unknown')}: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error upserting mod {row.get('id', 'unknown')}: {e}")
+        raise
 
 def get_known(conn: sqlite3.Connection, mid: int):
     cur = conn.execute("SELECT time_updated FROM mods WHERE id = ?", (mid,))
