@@ -1,3 +1,5 @@
 __pycache__
 config.json
 *.db
+workshop-watcher.log
+code_check.py
