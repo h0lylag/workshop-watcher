@@ -8,6 +8,7 @@ from util import now_ts
 STEAM_API_URL = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
 STEAM_USER_API_URL = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/"
 WORKSHOP_ITEM_URL = "https://steamcommunity.com/sharedfiles/filedetails/?id={id}"
+WORKSHOP_CHANGELOG_URL = "https://steamcommunity.com/sharedfiles/filedetails/changelog/{id}"
 
 def fetch_published_file_details(ids: List[int]) -> Dict[int, Dict]:
     results: Dict[int, Dict] = {}

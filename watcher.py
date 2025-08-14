@@ -97,6 +97,7 @@ def poll_once(cfg: Dict, db_path: str) -> int:
         print(f"Updated author names for {updated_count} existing mod(s).")
 
     # Now build embeds with resolved usernames
+    new_embeds: List[Dict] = []
     updated_embeds: List[Dict] = []
     for mod_info in mods_to_process:
         if mod_info["has_update"]:
@@ -126,11 +127,38 @@ def poll_once(cfg: Dict, db_path: str) -> int:
                     "visibility": row[12],
                     "preview_url": row[13],
                 }
-                updated_embeds.append(build_embed(mod_data, alias_map, mod_info["old_updated"]))
+                embed = build_embed(mod_data, alias_map, mod_info["old_updated"])
+                
+                # Determine if this is a new mod or an update
+                if mod_info["old_updated"] is None:
+                    new_embeds.append(embed)
+                else:
+                    updated_embeds.append(embed)
 
     conn.commit()
     conn.close()
 
+    total_notifications = 0
+    
+    # Send notifications for new mods
+    if new_embeds:
+        successes = 0
+        for chunk in chunked(new_embeds, 10):
+            chunk_size = len(chunk)
+            content_msg = f"Workshop mod added" if chunk_size == 1 else f"Workshop mods added"
+            if send_discord(
+                webhook,
+                content=content_msg,
+                embeds=chunk,
+            ):
+                successes += len(chunk)
+        if successes:
+            print(f"Notified {successes} new mod(s).")
+            total_notifications += successes
+        else:
+            print("Failed to send new mod notifications (see errors above).")
+
+    # Send notifications for updated mods
     if updated_embeds:
         successes = 0
         for chunk in chunked(updated_embeds, 10):
@@ -144,9 +172,11 @@ def poll_once(cfg: Dict, db_path: str) -> int:
                 successes += len(chunk)
         if successes:
             print(f"Notified {successes} update(s).")
+            total_notifications += successes
         else:
-            print("Failed to send updates (see errors above).")
-    else:
+            print("Failed to send update notifications (see errors above).")
+
+    if total_notifications == 0:
         print("No updates.")
 
     return 0

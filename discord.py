@@ -5,7 +5,7 @@ import datetime as dt
 import urllib.request
 from urllib.error import HTTPError, URLError
 from typing import Dict, List, Optional
-from steam import WORKSHOP_ITEM_URL
+from steam import WORKSHOP_ITEM_URL, WORKSHOP_CHANGELOG_URL
 
 def ts_to_discord(ts: int) -> str:
     return f"<t:{ts}:F> (<t:{ts}:R>)"
@@ -87,6 +87,7 @@ def build_embed(entry: Dict, alias_map: Dict[int, str], old_updated: Optional[in
         {"name": "Updated", "value": ts_to_discord(updated) if updated else "n/a", "inline": True},
         {"name": "Created", "value": ts_to_discord(created) if created else "n/a", "inline": True},
         {"name": "File size", "value": human_size(filesize), "inline": True},
+        {"name": "Changelog", "value": f"[View changelog](https://steamcommunity.com/sharedfiles/filedetails/changelog/{mid})", "inline": True},
     ]
     
     # Add stats if available
@@ -112,10 +113,15 @@ def build_embed(entry: Dict, alias_map: Dict[int, str], old_updated: Optional[in
     if author_id:
         footer_text += f" • Creator ID: {author_id}"
 
+    # Truncate description to 300 characters with ellipsis if needed
+    description = entry.get("description") or ""
+    if len(description) > 300:
+        description = description[:300] + "..."
+
     embed = {
         "title": display_title,
         "url": WORKSHOP_ITEM_URL.format(id=mid),
-        "description": (entry.get("description") or "")[:3000],
+        "description": description,
         "color": 0x2ecc71,
         "fields": fields,
         "footer": {"text": footer_text},
