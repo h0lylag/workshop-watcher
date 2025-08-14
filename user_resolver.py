@@ -10,6 +10,9 @@ from logger import get_logger
 # Cache user data for 7 days (604800 seconds)
 USER_CACHE_DURATION = 604800
 
+# Module-level logger
+logger = get_logger()
+
 def resolve_steam_usernames(conn: sqlite3.Connection, steam_ids: List[str], cfg: Dict) -> Dict[str, Optional[str]]:
     """
     Resolve Steam IDs to usernames, using cached data when available.
@@ -22,8 +25,6 @@ def resolve_steam_usernames(conn: sqlite3.Connection, steam_ids: List[str], cfg:
     Returns:
         Dict mapping Steam ID to username (or None if resolution failed)
     """
-    logger = get_logger()
-    
     if not steam_ids:
         logger.debug("No Steam IDs provided for resolution")
         return {}
@@ -134,11 +135,13 @@ def update_mod_author_names(conn: sqlite3.Connection, cfg: Dict) -> int:
     updated_count = 0
     for steam_id, username in usernames.items():
         if username:
-            conn.execute(
+            c = conn.execute(
                 "UPDATE mods SET author_name = ? WHERE author_id = ? AND (author_name IS NULL OR author_name = '')",
                 (username, steam_id)
             )
-            updated_count += conn.cursor().rowcount
+            # Use cursor rowcount correctly
+            if c.rowcount > 0:
+                updated_count += c.rowcount
     
     conn.commit()
     return updated_count
