@@ -1,5 +1,4 @@
-from utils.modlist import ensure_modlist, load_modlist  # type: ignore
-from config.config import load_config # type: ignore
+from utils.config_loader import ensure_modlist, load_modlist, load_config  # type: ignore
 from utils.watcher import poll_once  # type: ignore
 from db.db import connect_db  # type: ignore
 from utils.user_resolver import update_mod_author_names  # type: ignore
@@ -9,6 +8,7 @@ import argparse
 import os
 import sys
 import time
+from datetime import datetime, UTC
 
 
 def parse_args():
@@ -19,6 +19,7 @@ def parse_args():
     ap.add_argument("--watch", type=int, help="Interval seconds to poll repeatedly (omit to run once)")
     ap.add_argument("--update-authors", action="store_true", help="Update author names for existing mods and exit")
     ap.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Logging level (default: INFO)")
+    ap.add_argument("--show-updates", action="store_true", help="List mods with their stored last update timestamps and exit")
     return ap.parse_args()
 
 
@@ -42,6 +43,28 @@ def main():
     except Exception as e:
         logger.error(f"Failed to load config or modlist: {e}")
         sys.exit(2)
+
+    # New quick command: show updates and exit
+    if getattr(args, "show_updates", False):
+        try:
+            conn = connect_db(args.db)
+            cur = conn.execute("SELECT id, title, time_updated, last_checked FROM mods ORDER BY time_updated DESC NULLS LAST")
+            rows = cur.fetchall()
+            if not rows:
+                print("No mods stored in database.")
+            else:
+                print(f"Stored mods (count={len(rows)}):")
+                for r in rows:
+                    tu = r["time_updated"]
+                    lc = r["last_checked"]
+                    tu_h = datetime.fromtimestamp(tu, UTC).isoformat().replace('+00:00', 'Z') if isinstance(tu, int) and tu > 0 else "-"
+                    lc_h = datetime.fromtimestamp(lc, UTC).isoformat().replace('+00:00', 'Z') if isinstance(lc, int) and lc > 0 else "-"
+                    print(f"{r['id']:>12}  updated={tu_h:<25}  last_checked={lc_h:<25}  title={r['title'] or ''}")
+            conn.close()
+            sys.exit(0)
+        except Exception as e:
+            logger.error(f"Failed listing updates: {e}")
+            sys.exit(1)
 
     if not cfg.get("discord_webhook") and not os.getenv("DISCORD_WEBHOOK_URL") and not args.update_authors:
         logger.warning("No webhook in config and DISCORD_WEBHOOK_URL not set; will fail to notify")
