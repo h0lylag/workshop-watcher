@@ -31,13 +31,8 @@ def human_size(n: Optional[object]) -> str:
         n /= 1024
     return f"{n:.1f} EB"
 
-def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None, max_retries: int = 5, dry_run: bool = False) -> bool:
-    """Send a Discord webhook with rate limit handling and exponential backoff retry.
-    If dry_run is True, logs the payload and returns success without sending."""
-    
-    if dry_run:
-        logger.info(f"[dry-run] Would send Discord message: content='{content}' embeds={len(embeds) if embeds else 0}")
-        return True
+def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None, max_retries: int = 5) -> bool:
+    """Send a Discord webhook with rate limit handling and exponential backoff retry."""
     
     if not webhook:
         logger.error("Discord webhook URL is empty")

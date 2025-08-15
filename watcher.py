@@ -8,12 +8,10 @@ from util import now_ts, chunked
 from user_resolver import resolve_steam_usernames, update_mod_author_names
 from logger import get_logger
 
-def poll_once(cfg: Dict, db_path: str, dry_run: bool = False) -> int:
+def poll_once(cfg: Dict, db_path: str) -> int:
     """Poll Steam Workshop once for mod updates."""
     logger = get_logger()
     logger.info("Starting polling cycle")
-    if dry_run:
-        logger.info("Running in dry-run mode: no Discord webhooks will be sent")
 
     webhook = os.getenv("DISCORD_WEBHOOK_URL") or cfg.get("discord_webhook")
     if not webhook:
@@ -165,40 +163,32 @@ def poll_once(cfg: Dict, db_path: str, dry_run: bool = False) -> int:
         # Send notifications for new mods
         if new_embeds:
             logger.info(f"Preparing notifications for {len(new_embeds)} new mod(s)")
-            if not dry_run:
-                successes = 0
-                for chunk in chunked(new_embeds, 10):
-                    chunk_size = len(chunk)
-                    content_msg = "Workshop mod added" if chunk_size == 1 else "Workshop mods added"
-                    if send_discord(webhook, content=content_msg, embeds=chunk, dry_run=dry_run):
-                        successes += len(chunk)
-                    else:
-                        logger.error(f"Failed to send {chunk_size} new mod notification(s)")
-                if successes:
-                    logger.info(f"Successfully notified {successes} new mod(s)")
-                    total_notifications += successes
-            else:
-                logger.info("Dry-run: skipping Discord send for new mods")
-                total_notifications += len(new_embeds)
+            successes = 0
+            for chunk in chunked(new_embeds, 10):
+                chunk_size = len(chunk)
+                content_msg = "Workshop mod added" if chunk_size == 1 else "Workshop mods added"
+                if send_discord(webhook, content=content_msg, embeds=chunk):
+                    successes += len(chunk)
+                else:
+                    logger.error(f"Failed to send {chunk_size} new mod notification(s)")
+            if successes:
+                logger.info(f"Successfully notified {successes} new mod(s)")
+                total_notifications += successes
 
         # Send notifications for updated mods
         if updated_embeds:
             logger.info(f"Preparing notifications for {len(updated_embeds)} updated mod(s)")
-            if not dry_run:
-                successes = 0
-                for chunk in chunked(updated_embeds, 10):
-                    chunk_size = len(chunk)
-                    content_msg = "Workshop mod updated" if chunk_size == 1 else "Workshop mods updated"
-                    if send_discord(webhook, content=content_msg, embeds=chunk, dry_run=dry_run):
-                        successes += len(chunk)
-                    else:
-                        logger.error(f"Failed to send {chunk_size} update notification(s)")
-                if successes:
-                    logger.info(f"Successfully notified {successes} update(s)")
-                    total_notifications += successes
-            else:
-                logger.info("Dry-run: skipping Discord send for updated mods")
-                total_notifications += len(updated_embeds)
+            successes = 0
+            for chunk in chunked(updated_embeds, 10):
+                chunk_size = len(chunk)
+                content_msg = "Workshop mod updated" if chunk_size == 1 else "Workshop mods updated"
+                if send_discord(webhook, content=content_msg, embeds=chunk):
+                    successes += len(chunk)
+                else:
+                    logger.error(f"Failed to send {chunk_size} update notification(s)")
+            if successes:
+                logger.info(f"Successfully notified {successes} update(s)")
+                total_notifications += successes
 
         if total_notifications == 0:
             logger.info("No updates detected")
