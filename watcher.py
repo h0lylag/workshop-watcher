@@ -5,7 +5,7 @@ from db import connect_db, upsert_mod, get_known
 from steam import fetch_published_file_details, normalize_api_item
 from discord import build_embed, send_discord
 from util import now_ts, chunked
-from user_resolver import resolve_steam_usernames, update_mod_author_names
+from user_resolver import resolve_steam_usernames, update_mod_author_names, USER_CACHE_DURATION
 from logger import get_logger
 
 def poll_once(cfg: Dict, db_path: str) -> int:
@@ -104,6 +104,36 @@ def poll_once(cfg: Dict, db_path: str) -> int:
         if author_ids_to_resolve:
             unique_authors = list(set(author_ids_to_resolve))
             logger.info(f"Resolving usernames for {len(unique_authors)} unique author(s)")
+            # New log: show how many are cached vs need fetch
+            try:
+                current_time = now_ts()
+                if unique_authors:
+                    placeholders = ",".join(["?"] * len(unique_authors))
+                    cur_chk = conn.execute(
+                        f"SELECT steam_id, last_fetched, fetch_failed, persona_name FROM steam_users WHERE steam_id IN ({placeholders})",
+                        unique_authors
+                    )
+                    cache_hits = 0
+                    to_query = set(unique_authors)
+                    for row in cur_chk.fetchall():
+                        steam_id = row[0]
+                        last_fetched = row[1]
+                        fetch_failed = row[2]
+                        persona_name = row[3]
+                        if (
+                            persona_name
+                            and not fetch_failed
+                            and isinstance(last_fetched, int)
+                            and (current_time - last_fetched) < USER_CACHE_DURATION
+                        ):
+                            cache_hits += 1
+                            if steam_id in to_query:
+                                to_query.discard(steam_id)
+                    logger.info(
+                        f"Author cache hits: {cache_hits} / {len(unique_authors)}; querying {len(to_query)}"
+                    )
+            except Exception as e:
+                logger.debug(f"Author cache inspection failed: {e}")
             try:
                 usernames = resolve_steam_usernames(conn, unique_authors, cfg)
                 for mid in ids:
