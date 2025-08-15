@@ -2,10 +2,10 @@
 import os
 import sqlite3
 from typing import Dict, List, Optional, Set
-from db import get_steam_user, upsert_steam_user, mark_steam_user_fetch_failed
-from steam import fetch_steam_user_summaries, normalize_steam_user
-from util import now_ts
-from logger import get_logger
+from db.db import get_steam_user, upsert_steam_user, mark_steam_user_fetch_failed
+from utils.steam import fetch_steam_user_summaries, normalize_steam_user
+from utils.helpers import now_ts
+from utils.logger import get_logger
 
 # Cache user data for 7 days (604800 seconds)
 USER_CACHE_DURATION = 604800

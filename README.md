@@ -6,8 +6,8 @@ A Steam Workshop monitoring tool that tracks mod updates and sends Discord notif
 
 1. Get a Steam API key from [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)
 2. Set up a Discord webhook in your server
-3. Run once to generate config file: `python3 main.py`
-4. Edit `config.json` with your webhook URL, API key, and mod IDs
+3. Run once to generate modlist file: `python3 main.py`
+4. Edit `modlist.json` with your webhook URL, API key, and mod IDs
 
 ## Usage
 
@@ -19,9 +19,9 @@ python3 main.py
 python3 main.py --watch 300
 ```
 
-## Configuration
+## Modlist Format
 
-Edit `config.json`:
+Edit `modlist.json`:
 ```json
 {
   "discord_webhook": "https://discord.com/api/webhooks/...",

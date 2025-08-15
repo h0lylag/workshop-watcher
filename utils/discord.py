@@ -6,8 +6,8 @@ import urllib.request
 import time
 from urllib.error import HTTPError, URLError
 from typing import Dict, List, Optional
-from steam import WORKSHOP_ITEM_URL, WORKSHOP_CHANGELOG_URL
-from logger import get_logger
+from utils.steam import WORKSHOP_ITEM_URL, WORKSHOP_CHANGELOG_URL
+from utils.logger import get_logger
 
 # Module-level logger
 logger = get_logger()

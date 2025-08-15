@@ -1,6 +1,6 @@
 import sqlite3
-from util import now_ts
-from logger import get_logger
+from utils.helpers import now_ts
+from utils.logger import get_logger
 
 DB_SCHEMA = """
 PRAGMA journal_mode=WAL;

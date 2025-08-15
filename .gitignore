@@ -1,5 +1,5 @@
 __pycache__
-config.json
+modlist.json
 *.db
 workshop-watcher.log
 code_check.py

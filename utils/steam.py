@@ -2,9 +2,8 @@ import json
 import urllib.parse
 import urllib.request
 from typing import Dict, List, Optional
-from util import chunked
-from util import now_ts
-from logger import get_logger
+from utils.helpers import chunked, now_ts
+from utils.logger import get_logger
 
 STEAM_API_URL = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
 STEAM_USER_API_URL = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/"
