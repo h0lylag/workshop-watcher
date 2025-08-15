@@ -4,3 +4,4 @@ modlist.json
 workshop-watcher.log
 code_check.py
 result
+config/config.json

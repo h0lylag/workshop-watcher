@@ -1,4 +1,5 @@
 from utils.modlist import ensure_modlist, load_modlist  # type: ignore
+from config.config import load_config # type: ignore
 from utils.watcher import poll_once  # type: ignore
 from db.db import connect_db  # type: ignore
 from utils.user_resolver import update_mod_author_names  # type: ignore
@@ -12,6 +13,7 @@ import time
 
 def parse_args():
     ap = argparse.ArgumentParser(description="Monitor Steam Workshop mods and notify Discord of updates.")
+    ap.add_argument("--config", default="config/config.json", help="Path to config JSON (default: config/config.json)")
     ap.add_argument("--modlist", default="config/modlist.json", help="Path to modlist JSON (default: config/modlist.json; created if missing)")
     ap.add_argument("--db", default="db/mods.db", help="Path to SQLite database (default: db/mods.db)")
     ap.add_argument("--watch", type=int, help="Interval seconds to poll repeatedly (omit to run once)")
@@ -31,21 +33,24 @@ def main():
     # Ensure modlist JSON exists (uses ensure_modlist for creation logic)
     ensure_modlist(args.modlist)
     try:
-        cfg = load_modlist(args.modlist)
+        cfg = load_config(args.config)
+        modlist = load_modlist(args.modlist)
+        cfg.update(modlist)
+        logger.info(f"Loaded config from {args.config}")
         logger.info(f"Loaded modlist from {args.modlist}")
         logger.debug(f"Monitoring {len(cfg.get('mods', []))} mod(s)")
     except Exception as e:
-        logger.error(f"Failed to load modlist: {e}")
+        logger.error(f"Failed to load config or modlist: {e}")
         sys.exit(2)
 
     if not cfg.get("discord_webhook") and not os.getenv("DISCORD_WEBHOOK_URL") and not args.update_authors:
-        logger.warning("No webhook in modlist and DISCORD_WEBHOOK_URL not set; will fail to notify")
+        logger.warning("No webhook in config and DISCORD_WEBHOOK_URL not set; will fail to notify")
 
     if args.update_authors:
         logger.info("Running in author update mode")
         api_key = cfg.get("steam_api_key") or os.getenv("STEAM_API_KEY")
         if not api_key or api_key == "PUT_STEAM_API_KEY_HERE":
-            logger.error("Steam API key required for updating author names. Set steam_api_key in modlist or STEAM_API_KEY environment variable.")
+            logger.error("Steam API key required for updating author names. Set steam_api_key in config or STEAM_API_KEY environment variable.")
             logger.info("Get your Steam API key at: https://steamcommunity.com/dev/apikey")
             sys.exit(1)
         try:

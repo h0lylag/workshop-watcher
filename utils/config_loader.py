@@ -1,13 +1,50 @@
 import json
+import logging
 import os
 import sys
 from typing import Dict
-from utils.logger import get_logger  # type: ignore
+
+logger = logging.getLogger("config_loader")
+
+
+def load_config(path: str) -> dict:
+    """Loads a JSON config file from the given path."""
+    if not os.path.exists(path):
+        logger.error(f"Config file not found at '{path}'")
+        return {}
+
+    with open(path, "r") as f:
+        try:
+            return json.load(f)
+        except json.JSONDecodeError:
+            logger.exception(f"Failed to decode config at '{path}'")
+            return {}
+
+
+def ensure_config(path: str) -> None:
+    """Ensure config file exists; create default and exit if missing."""
+    if os.path.exists(path):
+        logger.debug(f"Config file exists: {path}")
+        return
+
+    logger.info(f"Creating default config file: {path}")
+    default_config = {
+        "discord_webhook": "PUT_WEBHOOK_URL_HERE",
+        "steam_api_key": "PUT_STEAM_API_KEY_HERE",
+    }
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(default_config, f, indent=2)
+        logger.info(f"Created default config at '{path}'. Edit it to set your webhook and API key, then re-run.")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"Failed to create default config '{path}': {e}")
+        sys.exit(2)
 
 
 def load_modlist(path: str) -> Dict:
     """Load and validate modlist JSON file."""
-    logger = get_logger()
     try:
         logger.debug(f"Loading modlist from {path}")
         with open(path, "r", encoding="utf-8") as f:
@@ -60,27 +97,17 @@ def load_modlist(path: str) -> Dict:
 
 def ensure_modlist(path: str) -> None:
     """Ensure modlist file exists; create default and exit if missing."""
-    logger = get_logger()
-
     if os.path.exists(path):
         logger.debug(f"Modlist file exists: {path}")
         return
 
     logger.info(f"Creating default modlist file: {path}")
-    default_modlist = {
-        "discord_webhook": "PUT_WEBHOOK_URL_HERE",
-        "steam_api_key": "PUT_STEAM_API_KEY_HERE",
-        "mods": [
-            {"id": 3458840545, "alias": "Sample Mod"}
-        ]
-    }
+    default_modlist = {"mods": [{"id": 3458840545, "alias": "Sample Mod"}]}
     try:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(default_modlist, f, indent=2)
-        logger.info(
-            f"Created default modlist at '{path}'. Edit it (set discord_webhook, steam_api_key, adjust mods) then re-run."
-        )
+        logger.info(f"Created default modlist at '{path}'. Edit it to add your mods then re-run.")
         sys.exit(0)
     except Exception as e:
         logger.error(f"Failed to create default modlist '{path}': {e}")
