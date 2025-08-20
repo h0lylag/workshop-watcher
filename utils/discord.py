@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 from utils.steam import WORKSHOP_ITEM_URL, WORKSHOP_CHANGELOG_URL
 from utils.logger import get_logger
 from utils.config_loader import load_config
+import builtins
 
 # Module-level logger
 logger = get_logger()
@@ -44,13 +45,13 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None
         logger.error(f"Invalid Discord webhook URL format: {webhook[:50]}...")
         return False
 
-    # Load ping roles from config if not provided
+    # Load ping roles from global config if not provided
     if ping_roles is None:
         try:
-            config = load_config("/home/chris/scripts/workshop-watcher/config/config.json")
+            config = getattr(builtins, 'global_config', {})
             ping_roles = config.get("ping_roles", [])
         except Exception as e:
-            logger.warning(f"Could not load ping_roles from config: {e}")
+            logger.warning(f"Could not load ping_roles from global_config: {e}")
             ping_roles = []
 
     # Build role mention string

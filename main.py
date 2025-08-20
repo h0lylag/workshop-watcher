@@ -34,12 +34,16 @@ def main():
     # Ensure modlist JSON exists (uses ensure_modlist for creation logic)
     ensure_modlist(args.modlist)
     try:
-        cfg = load_config(args.config)
-        modlist = load_modlist(args.modlist)
-        cfg.update(modlist)
+        base_cfg = load_config(args.config)
+        modlist_cfg = load_modlist(args.modlist)
+        global_config = base_cfg.copy()
+        global_config.update(modlist_cfg)
+        # Make global config available for import in other modules
+        import builtins
+        builtins.global_config = global_config
         logger.info(f"Loaded config from {args.config}")
         logger.info(f"Loaded modlist from {args.modlist}")
-        logger.debug(f"Monitoring {len(cfg.get('mods', []))} mod(s)")
+        logger.debug(f"Monitoring {len(global_config.get('mods', []))} mod(s)")
     except Exception as e:
         logger.error(f"Failed to load config or modlist: {e}")
         sys.exit(2)
@@ -66,19 +70,19 @@ def main():
             logger.error(f"Failed listing updates: {e}")
             sys.exit(1)
 
-    if not cfg.get("discord_webhook") and not os.getenv("DISCORD_WEBHOOK_URL") and not args.update_authors:
+    if not global_config.get("discord_webhook") and not os.getenv("DISCORD_WEBHOOK_URL") and not args.update_authors:
         logger.warning("No webhook in config and DISCORD_WEBHOOK_URL not set; will fail to notify")
 
     if args.update_authors:
         logger.info("Running in author update mode")
-        api_key = cfg.get("steam_api_key") or os.getenv("STEAM_API_KEY")
+        api_key = global_config.get("steam_api_key") or os.getenv("STEAM_API_KEY")
         if not api_key or api_key == "PUT_STEAM_API_KEY_HERE":
             logger.error("Steam API key required for updating author names. Set steam_api_key in config or STEAM_API_KEY environment variable.")
             logger.info("Get your Steam API key at: https://steamcommunity.com/dev/apikey")
             sys.exit(1)
         try:
             conn = connect_db(args.db)
-            updated_count = update_mod_author_names(conn, cfg)
+            updated_count = update_mod_author_names(conn, global_config)
             conn.close()
             logger.info(f"Updated author names for {updated_count} mod(s)")
             sys.exit(0)
@@ -91,7 +95,7 @@ def main():
         try:
             while True:
                 try:
-                    poll_once(cfg, args.db)
+                    poll_once(global_config, args.db)
                 except KeyboardInterrupt:
                     logger.info("Received interrupt signal, stopping after current cycle")
                     break
@@ -108,7 +112,7 @@ def main():
     else:
         logger.info("Running single poll")
         try:
-            rc = poll_once(cfg, args.db)
+            rc = poll_once(global_config, args.db)
             logger.info("Single poll completed successfully")
             sys.exit(rc)
         except Exception as e:
