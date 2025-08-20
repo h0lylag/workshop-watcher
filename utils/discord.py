@@ -1,4 +1,5 @@
 """Discord utilities (renamed from discord_util)."""
+
 import json
 import sys
 import datetime as dt
@@ -8,6 +9,7 @@ from urllib.error import HTTPError, URLError
 from typing import Dict, List, Optional
 from utils.steam import WORKSHOP_ITEM_URL, WORKSHOP_CHANGELOG_URL
 from utils.logger import get_logger
+from utils.config_loader import load_config
 
 # Module-level logger
 logger = get_logger()
@@ -31,26 +33,43 @@ def human_size(n: Optional[object]) -> str:
         n /= 1024
     return f"{n:.1f} EB"
 
-def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None, max_retries: int = 5) -> bool:
-    """Send a Discord webhook with rate limit handling and exponential backoff retry."""
-    
+def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None, max_retries: int = 5, ping_roles: Optional[List[int]] = None) -> bool:
+    """Send a Discord webhook with rate limit handling and exponential backoff retry. Optionally pings roles."""
+
     if not webhook:
         logger.error("Discord webhook URL is empty")
         return False
-    
+
     if not webhook.startswith(('http://', 'https://')):
         logger.error(f"Invalid Discord webhook URL format: {webhook[:50]}...")
         return False
-    
+
+    # Load ping roles from config if not provided
+    if ping_roles is None:
+        try:
+            config = load_config("/home/chris/scripts/workshop-watcher/config/config.json")
+            ping_roles = config.get("ping_roles", [])
+        except Exception as e:
+            logger.warning(f"Could not load ping_roles from config: {e}")
+            ping_roles = []
+
+    # Build role mention string
+    role_mentions = " ".join([f"<@&{rid}>" for rid in ping_roles]) if ping_roles else ""
+    if role_mentions:
+        if content:
+            content = f"{role_mentions} {content}"
+        else:
+            content = role_mentions
+
     body = {"content": content}
     if embeds:
         body["embeds"] = embeds
         logger.debug(f"Sending Discord message with {len(embeds)} embed(s)")
     else:
         logger.debug("Sending Discord message without embeds")
-    
+
     data = json.dumps(body).encode("utf-8")
-    
+
     for attempt in range(max_retries):
         req = urllib.request.Request(
             webhook,
@@ -60,14 +79,14 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None
                 "User-Agent": "workshop-watcher/1.0 (+https://github.com/h0lylag) Python"
             }
         )
-        
+
         try:
             logger.debug(f"Attempting Discord webhook (attempt {attempt + 1}/{max_retries})")
             with urllib.request.urlopen(req, timeout=30) as resp:
                 _ = resp.read()
             logger.info("Discord webhook sent successfully")
             return True
-            
+
         except HTTPError as e:
             if e.code == 429:  # Rate limited
                 try:
@@ -80,23 +99,23 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None
                         # Exponential backoff if no Retry-After header
                         retry_delay = min(2 ** attempt, 60)  # Cap at 60 seconds
                         logger.warning(f"Discord rate limited (no retry-after header). Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
-                    
+
                     time.sleep(retry_delay)
                     continue  # Retry the request
-                    
+
                 except (ValueError, TypeError):
                     # Fallback to exponential backoff if Retry-After header is invalid
                     retry_delay = min(2 ** attempt, 60)
                     logger.warning(f"Discord rate limited (invalid retry-after header). Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
                     time.sleep(retry_delay)
                     continue
-                    
+
             elif e.code >= 500:  # Server errors - retry with exponential backoff
                 retry_delay = min(2 ** attempt, 30)  # Cap at 30 seconds for server errors
                 logger.warning(f"Discord server error {e.code}. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
                 time.sleep(retry_delay)
                 continue
-                
+
             else:  # Client errors (400, 401, 403, etc.) - don't retry
                 try:
                     err_body = e.read().decode("utf-8", errors="replace")
@@ -104,21 +123,21 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None
                     err_body = "<no body>"
                 logger.error(f"Discord webhook HTTP error {e.code}: {e.reason} body={err_body[:300]}")
                 return False
-                
+
         except URLError as e:
             # Network/connection errors - retry with exponential backoff
             retry_delay = min(2 ** attempt, 30)
             logger.warning(f"Discord webhook connection error: {e.reason}. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
             time.sleep(retry_delay)
             continue
-            
+
         except Exception as e:
             # Unexpected errors - retry with exponential backoff
             retry_delay = min(2 ** attempt, 30)
             logger.warning(f"Discord webhook unexpected error: {e}. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
             time.sleep(retry_delay)
             continue
-    
+
     logger.error(f"Discord webhook failed after {max_retries} attempts")
     return False
 

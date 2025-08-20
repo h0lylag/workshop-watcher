@@ -31,6 +31,7 @@ def ensure_config(path: str) -> None:
     default_config = {
         "discord_webhook": "PUT_WEBHOOK_URL_HERE",
         "steam_api_key": "PUT_STEAM_API_KEY_HERE",
+        "ping_roles": [123456789012345678]
     }
     try:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
