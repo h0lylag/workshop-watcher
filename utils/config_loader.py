@@ -51,38 +51,38 @@ def load_modlist(path: str) -> Dict:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        mods = data.get("mods")
-        if not isinstance(mods, list) or not mods:
-            raise ValueError("modlist 'mods' must be a non-empty list of objects with an 'id' field")
+        workshop_items = data.get("workshop_items")
+        if not isinstance(workshop_items, list) or not workshop_items:
+            raise ValueError("modlist 'workshop_items' must be a non-empty list of objects with an 'id' field")
 
-        valid_mods = []
+        valid_items = []
         seen_ids = set()
-        for i, mod in enumerate(mods):
-            if not isinstance(mod, dict):
-                logger.warning(f"Skipping invalid mod entry at index {i}: not a dictionary")
+        for i, item in enumerate(workshop_items):
+            if not isinstance(item, dict):
+                logger.warning(f"Skipping invalid workshop item at index {i}: not a dictionary")
                 continue
-            if "id" not in mod:
-                logger.warning(f"Skipping mod entry at index {i}: missing 'id' field")
+            if "id" not in item:
+                logger.warning(f"Skipping workshop item at index {i}: missing 'id' field")
                 continue
             try:
-                mod_id = int(mod["id"])
-                if mod_id <= 0:
-                    logger.warning(f"Skipping mod entry at index {i}: invalid ID {mod_id}")
+                item_id = int(item["id"])
+                if item_id <= 0:
+                    logger.warning(f"Skipping workshop item at index {i}: invalid ID {item_id}")
                     continue
-                if mod_id in seen_ids:
-                    logger.warning(f"Duplicate mod id {mod_id} at index {i}; ignoring duplicate")
+                if item_id in seen_ids:
+                    logger.warning(f"Duplicate workshop item id {item_id} at index {i}; ignoring duplicate")
                     continue
-                seen_ids.add(mod_id)
-                valid_mods.append(mod)
+                seen_ids.add(item_id)
+                valid_items.append(item)
             except (ValueError, TypeError):
-                logger.warning(f"Skipping mod entry at index {i}: invalid ID format")
+                logger.warning(f"Skipping workshop item at index {i}: invalid ID format")
                 continue
 
-        if not valid_mods:
-            raise ValueError("No valid mod entries found in modlist")
+        if not valid_items:
+            raise ValueError("No valid workshop items found in modlist")
 
-        data["mods"] = valid_mods
-        logger.info(f"Loaded modlist with {len(valid_mods)} valid mod(s)")
+        data["workshop_items"] = valid_items
+        logger.info(f"Loaded modlist with {len(valid_items)} valid workshop item(s)")
         return data
 
     except FileNotFoundError:
@@ -103,7 +103,7 @@ def ensure_modlist(path: str) -> None:
         return
 
     logger.info(f"Creating default modlist file: {path}")
-    default_modlist = {"mods": [{"id": 3458840545, "alias": "Sample Mod"}]}
+    default_modlist = {"workshop_items": [{"id": 3458840545, "name": "Sample Mod"}]}
     try:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:

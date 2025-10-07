@@ -43,7 +43,7 @@ def main():
         builtins.global_config = global_config
         logger.info(f"Loaded config from {args.config}")
         logger.info(f"Loaded modlist from {args.modlist}")
-        logger.debug(f"Monitoring {len(global_config.get('mods', []))} mod(s)")
+        logger.debug(f"Monitoring {len(global_config.get('workshop_items', []))} workshop item(s)")
     except Exception as e:
         logger.error(f"Failed to load config or modlist: {e}")
         sys.exit(2)

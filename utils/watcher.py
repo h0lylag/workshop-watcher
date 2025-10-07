@@ -20,14 +20,14 @@ def poll_once(cfg: Dict, db_path: str) -> int:
 
     ids: List[int] = []
     alias_map: Dict[int, str] = {}
-    for m in cfg["mods"]:
+    for item in cfg["workshop_items"]:
         try:
-            mid = int(m["id"])
+            mid = int(item["id"])
             ids.append(mid)
-            if "alias" in m and m["alias"]:
-                alias_map[mid] = str(m["alias"])
+            if "name" in item and item["name"]:
+                alias_map[mid] = str(item["name"])
         except (ValueError, TypeError, KeyError) as e:
-            logger.warning(f"Invalid mod entry in config: {m}. Error: {e}")
+            logger.warning(f"Invalid workshop item entry in config: {item}. Error: {e}")
             continue
 
     if not ids:
