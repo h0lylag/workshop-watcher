@@ -111,6 +111,12 @@ def get_known(conn: sqlite3.Connection, mid: int):
     cur = conn.execute("SELECT time_updated FROM mods WHERE id = ?", (mid,))
     return cur.fetchone()
 
+def get_mod_by_id(conn: sqlite3.Connection, mod_id: int):
+    """Get complete mod data as dictionary."""
+    cur = conn.execute("SELECT * FROM mods WHERE id = ?", (mod_id,))
+    row = cur.fetchone()
+    return dict(row) if row else None
+
 def get_steam_user(conn: sqlite3.Connection, steam_id: str):
     """Get cached Steam user data from database."""
     cur = conn.execute("SELECT persona_name, real_name, profile_url, avatar_url, last_fetched, fetch_failed FROM steam_users WHERE steam_id = ?", (steam_id,))

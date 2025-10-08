@@ -1,10 +1,10 @@
 import os
 import sys
 from typing import Dict, List, Optional
-from db.db import connect_db, upsert_mod, get_known
+from db.db import connect_db, upsert_mod, get_known, get_mod_by_id
 from utils.steam import fetch_published_file_details, normalize_api_item
 from utils.discord import build_embed, send_discord
-from utils.helpers import now_ts, chunked
+from utils.helpers import now_ts, chunked, create_empty_mod_record
 from utils.user_resolver import resolve_steam_usernames, update_mod_author_names, USER_CACHE_DURATION
 from utils.logger import get_logger
 from utils.constants import DISCORD_MAX_EMBEDS_PER_MESSAGE
@@ -61,24 +61,7 @@ def poll_once(cfg: Dict, db_path: str) -> int:
             raw = details.get(mid)
             if not raw or int(raw.get("result", 0)) != 1:
                 logger.warning(f"No valid data for mod {mid} from Steam API")
-                row = {
-                    "id": mid,
-                    "title": None,
-                    "author_id": None,
-                    "author_name": None,
-                    "file_size": None,
-                    "time_created": None,
-                    "time_updated": None,
-                    "last_checked": now_ts(),
-                    "description": None,
-                    "views": None,
-                    "subscriptions": None,
-                    "favorites": None,
-                    "tags": None,
-                    "visibility": None,
-                    "preview_url": None,
-                }
-                upsert_mod(conn, row)
+                upsert_mod(conn, create_empty_mod_record(mid))
                 continue
 
             norm = normalize_api_item(raw)
@@ -167,20 +150,8 @@ def poll_once(cfg: Dict, db_path: str) -> int:
         for mod_info in mods_to_process:
             if mod_info["has_update"]:
                 try:
-                    cur = conn.execute(
-                        "SELECT id, title, author_id, author_name, file_size, time_created, time_updated, "
-                        "description, views, subscriptions, favorites, tags, visibility, preview_url "
-                        "FROM mods WHERE id = ?",
-                        (mod_info["mid"],)
-                    )
-                    row = cur.fetchone()
-                    if row:
-                        mod_data = {
-                            "id": row[0], "title": row[1], "author_id": row[2], "author_name": row[3],
-                            "file_size": row[4], "time_created": row[5], "time_updated": row[6],
-                            "description": row[7], "views": row[8], "subscriptions": row[9],
-                            "favorites": row[10], "tags": row[11], "visibility": row[12], "preview_url": row[13],
-                        }
+                    mod_data = get_mod_by_id(conn, mod_info["mid"])
+                    if mod_data:
                         embed = build_embed(mod_data, alias_map, mod_info["old_updated"])
                         if mod_info["old_updated"] is None:
                             new_embeds.append(embed)
