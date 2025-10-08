@@ -13,13 +13,13 @@ def validate_steam_api_key(key: Optional[str]) -> bool:
 
 
 def validate_discord_webhook(url: Optional[str]) -> bool:
-    """Check if Discord webhook URL looks valid."""
+    """Check if Discord webhook URL looks valid (must be HTTPS)."""
     if not url:
         return False
     try:
         parsed = urllib.parse.urlparse(url)
         return (
-            parsed.scheme in ('http', 'https') and
+            parsed.scheme == 'https' and
             'discord.com' in parsed.netloc and
             '/api/webhooks/' in parsed.path
         )
