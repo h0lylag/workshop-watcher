@@ -3,7 +3,7 @@ import sys
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 import sqlite3
-from db.db import connect_db, upsert_mod, get_last_update_time, get_mod_by_id
+from db.db import connect_db, upsert_mod, get_last_update_time, get_mod_by_id, get_cached_steam_users
 from utils.steam import fetch_published_file_details, normalize_api_item
 from utils.discord import build_embed, send_discord
 from utils.helpers import get_current_timestamp, chunk_list, create_empty_mod_record
@@ -144,14 +144,11 @@ def _resolve_author_names(
     try:
         current_time = get_current_timestamp()
         if unique_authors:
-            placeholders = ",".join(["?"] * len(unique_authors))
-            cur_chk = conn.execute(
-                f"SELECT steam_id, last_fetched, fetch_failed, persona_name FROM steam_users WHERE steam_id IN ({placeholders})",
-                unique_authors
-            )
+            cached_users = get_cached_steam_users(conn, unique_authors)
             cache_hits = 0
             to_query = set(unique_authors)
-            for row in cur_chk.fetchall():
+            
+            for row in cached_users:
                 steam_id = row[0]
                 last_fetched = row[1]
                 fetch_failed = row[2]

@@ -126,6 +126,29 @@ def get_steam_user(conn: sqlite3.Connection, steam_id: str) -> Optional[Tuple]:
     cur = conn.execute("SELECT persona_name, real_name, profile_url, avatar_url, last_fetched, fetch_failed FROM steam_users WHERE steam_id = ?", (steam_id,))
     return cur.fetchone()
 
+def get_cached_steam_users(conn: sqlite3.Connection, steam_ids: list[str]) -> list[Tuple]:
+    """
+    Get cached Steam user data for multiple IDs.
+    
+    Args:
+        conn: Database connection
+        steam_ids: List of Steam IDs to query
+        
+    Returns:
+        List of tuples: (steam_id, last_fetched, fetch_failed, persona_name)
+    """
+    if not steam_ids:
+        return []
+    
+    placeholders = ",".join(["?"] * len(steam_ids))
+    query = f"""
+        SELECT steam_id, last_fetched, fetch_failed, persona_name 
+        FROM steam_users 
+        WHERE steam_id IN ({placeholders})
+    """
+    cur = conn.execute(query, steam_ids)
+    return cur.fetchall()
+
 def upsert_steam_user(conn: sqlite3.Connection, user_data: Dict[str, Any]) -> None:
     """Insert or update Steam user data in the database."""
     conn.execute(
