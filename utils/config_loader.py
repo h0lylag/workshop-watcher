@@ -2,23 +2,67 @@ import json
 import logging
 import os
 import sys
-from typing import Dict
+from typing import Dict, List, Optional
 
 logger = logging.getLogger("config_loader")
 
 
 def load_config(path: str) -> dict:
-    """Loads a JSON config file from the given path."""
+    """Loads a JSON config file from the given path, with environment variable overrides.
+    
+    Environment variable mappings:
+    - DISCORD_WEBHOOK -> discord_webhook
+    - STEAM_API_KEY -> steam_api_key
+    - PING_ROLES -> ping_roles (comma-separated list of role IDs)
+    
+    Environment variables take priority over JSON config values.
+    """
+    # Load JSON config (or empty dict if file doesn't exist)
     if not os.path.exists(path):
-        logger.error(f"Config file not found at '{path}'")
-        return {}
-
-    with open(path, "r") as f:
+        logger.warning(f"Config file not found at '{path}', using defaults")
+        config = {}
+    else:
+        with open(path, "r") as f:
+            try:
+                config = json.load(f)
+            except json.JSONDecodeError:
+                logger.exception(f"Failed to decode config at '{path}'")
+                config = {}
+    
+    # Apply environment variable overrides
+    env_overrides_applied = []
+    
+    # Discord webhook
+    discord_webhook = os.getenv("DISCORD_WEBHOOK")
+    if discord_webhook:
+        config["discord_webhook"] = discord_webhook
+        env_overrides_applied.append("DISCORD_WEBHOOK")
+        logger.debug("Using DISCORD_WEBHOOK from environment variable")
+    
+    # Steam API key
+    steam_api_key = os.getenv("STEAM_API_KEY")
+    if steam_api_key:
+        config["steam_api_key"] = steam_api_key
+        env_overrides_applied.append("STEAM_API_KEY")
+        logger.debug("Using STEAM_API_KEY from environment variable")
+    
+    # Ping roles (comma-separated list)
+    ping_roles_env = os.getenv("PING_ROLES")
+    if ping_roles_env:
         try:
-            return json.load(f)
-        except json.JSONDecodeError:
-            logger.exception(f"Failed to decode config at '{path}'")
-            return {}
+            # Parse comma-separated role IDs
+            role_ids = [int(rid.strip()) for rid in ping_roles_env.split(",") if rid.strip()]
+            if role_ids:
+                config["ping_roles"] = role_ids
+                env_overrides_applied.append("PING_ROLES")
+                logger.debug(f"Using PING_ROLES from environment variable: {len(role_ids)} role(s)")
+        except ValueError as e:
+            logger.error(f"Invalid PING_ROLES format in environment variable: {ping_roles_env}. Expected comma-separated integers. Error: {e}")
+    
+    if env_overrides_applied:
+        logger.info(f"Applied environment variable overrides: {', '.join(env_overrides_applied)}")
+    
+    return config
 
 
 def ensure_config(path: str) -> None:

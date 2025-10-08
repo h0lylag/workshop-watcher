@@ -70,14 +70,14 @@ def main():
             logger.error(f"Failed listing updates: {e}")
             sys.exit(1)
 
-    if not global_config.get("discord_webhook") and not os.getenv("DISCORD_WEBHOOK_URL") and not args.update_authors:
-        logger.warning("No webhook in config and DISCORD_WEBHOOK_URL not set; will fail to notify")
+    if not global_config.get("discord_webhook") and not args.update_authors:
+        logger.warning("No webhook in config or DISCORD_WEBHOOK environment variable; will fail to notify")
 
     if args.update_authors:
         logger.info("Running in author update mode")
-        api_key = global_config.get("steam_api_key") or os.getenv("STEAM_API_KEY")
+        api_key = global_config.get("steam_api_key")
         if not api_key or api_key == "PUT_STEAM_API_KEY_HERE":
-            logger.error("Steam API key required for updating author names. Set steam_api_key in config or STEAM_API_KEY environment variable.")
+            logger.error("Steam API key required for updating author names. Set steam_api_key in config.json or STEAM_API_KEY environment variable.")
             logger.info("Get your Steam API key at: https://steamcommunity.com/dev/apikey")
             sys.exit(1)
         try:

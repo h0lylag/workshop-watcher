@@ -13,9 +13,9 @@ def poll_once(cfg: Dict, db_path: str) -> int:
     logger = get_logger()
     logger.info("Starting polling cycle")
 
-    webhook = os.getenv("DISCORD_WEBHOOK_URL") or cfg.get("discord_webhook")
+    webhook = cfg.get("discord_webhook")
     if not webhook:
-        logger.error("Discord webhook not provided (config or DISCORD_WEBHOOK_URL)")
+        logger.error("Discord webhook not provided in config or DISCORD_WEBHOOK environment variable")
         return 2
 
     ids: List[int] = []

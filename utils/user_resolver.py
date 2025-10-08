@@ -31,10 +31,10 @@ def resolve_steam_usernames(conn: sqlite3.Connection, steam_ids: List[str], cfg:
     
     logger.debug(f"Resolving usernames for {len(steam_ids)} Steam ID(s)")
     
-    # Get Steam API key from config or environment
-    api_key = cfg.get("steam_api_key") or os.getenv("STEAM_API_KEY")
+    # Get Steam API key from config (which may have been overridden by environment variable)
+    api_key = cfg.get("steam_api_key")
     if not api_key:
-        logger.warning("No Steam API key found in config or STEAM_API_KEY environment variable")
+        logger.warning("No Steam API key found in config.json or STEAM_API_KEY environment variable")
         return {steam_id: None for steam_id in steam_ids}
     
     results: Dict[str, Optional[str]] = {}
