@@ -18,9 +18,11 @@ def validate_discord_webhook(url: Optional[str]) -> bool:
         return False
     try:
         parsed = urllib.parse.urlparse(url)
+        # Support both discord.com and discordapp.com domains
+        valid_domain = 'discord.com' in parsed.netloc or 'discordapp.com' in parsed.netloc
         return (
             parsed.scheme == 'https' and
-            'discord.com' in parsed.netloc and
+            valid_domain and
             '/api/webhooks/' in parsed.path
         )
     except Exception:
@@ -37,10 +39,11 @@ def validate_workshop_id(id_val: Any) -> bool:
 
 
 def validate_role_id(role_id: Any) -> bool:
-    """Check if Discord role ID is valid (positive integer, typically 17-19 digits)."""
+    """Check if Discord role ID is valid (17-19 digit integer or numeric string)."""
     try:
         rid = int(role_id)
         # Discord snowflake IDs are positive integers, typically 17-19 digits
-        return rid > 0 and len(str(rid)) >= 17
+        rid_str = str(rid)
+        return rid > 0 and 17 <= len(rid_str) <= 19
     except (ValueError, TypeError):
         return False

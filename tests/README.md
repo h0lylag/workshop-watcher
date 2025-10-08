@@ -8,32 +8,31 @@ These tests automatically verify that your code works correctly. They check:
 - ✅ Invalid inputs are rejected
 - ✅ Database operations work correctly
 
-## Setup
+## Zero External Dependencies! 🎉
 
-### 1. Install pytest
+All tests use Python's built-in `unittest` module - **no pip install required!**
 
-```bash
-pip install pytest
-```
+## Running Tests
 
-Or if using nix:
-```bash
-nix-shell -p python3Packages.pytest
-```
-
-### 2. Run All Tests
+### Run All Tests
 
 ```bash
 # From the project root directory
-pytest tests/ -v
+python -m unittest discover tests -v
 ```
 
-### 3. Run Specific Test Files
+### Run Specific Test Files
 
 ```bash
-pytest tests/test_helpers.py -v      # Test helper functions
-pytest tests/test_validators.py -v   # Test validators
-pytest tests/test_db.py -v           # Test database functions
+python -m unittest tests.test_helpers -v      # Test helper functions
+python -m unittest tests.test_validators -v   # Test validators
+python -m unittest tests.test_db -v           # Test database functions
+```
+
+### Run Quick Demo (No Dependencies)
+
+```bash
+python tests/simple_test_demo.py
 ```
 
 ## Understanding Test Output
