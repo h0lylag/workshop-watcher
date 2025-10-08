@@ -2,6 +2,20 @@
 
 A Steam Workshop monitoring tool that tracks mod updates and sends Discord notifications.
 
+## How It Works
+
+1. Queries the Steam API to check when workshop items were last updated
+2. Compares update times against a local SQLite database
+3. Sends Discord webhook notifications when mods are updated
+4. Caches Steam user information to display mod author names
+
+Perfect for DayZ server admins or any game that uses Steam Workshop!
+
+## Requirements
+
+- Python 3.6 or newer
+- No external dependencies! Uses only Python standard library
+
 ## Setup
 
 1. Get a Steam API key from [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)
@@ -63,6 +77,8 @@ You can mix both methods - use JSON for defaults and env vars for overrides.
 
 ## Usage
 
+### Basic Commands
+
 ```bash
 # Check once and exit
 python3 main.py
@@ -75,6 +91,22 @@ python3 main.py --update-authors
 
 # Show stored mod update timestamps
 python3 main.py --show-updates
+```
+
+### Advanced Options
+
+```bash
+# Control logging verbosity
+python3 main.py --log-level DEBUG   # Show detailed debug info
+python3 main.py --log-level WARNING # Only show warnings/errors
+
+# Override file paths via command-line
+python3 main.py --config /path/to/config.json \
+                --modlist /path/to/modlist.json \
+                --db /path/to/database.db
+
+# Combine options
+python3 main.py --watch 600 --log-level WARNING
 ```
 
 ## Docker/Container/NixOS Usage
@@ -94,3 +126,89 @@ docker run \
 ```
 
 This approach ensures your database and config persist outside the container/Nix store.
+
+## What Gets Notified?
+
+When a mod updates, Discord receives:
+- 🔔 Mod name and Steam Workshop link
+- 👤 Author name (cached from Steam)
+- 🕒 Update timestamp
+- 🔗 Direct link to the workshop page
+- 📌 Ping roles (if configured)
+
+## Development
+
+### Running Tests
+
+The project includes a comprehensive test suite with **56 tests** and zero external dependencies:
+
+```bash
+# Run all tests
+python -m unittest discover tests -v
+
+# Run specific test file
+python -m unittest tests.test_validators -v
+
+# Quick demo (no framework required)
+python tests/simple_test_demo.py
+```
+
+See [`tests/README.md`](tests/README.md) for more details.
+
+### Test Coverage
+
+- ✅ Configuration validators
+- ✅ Database operations  
+- ✅ Utility functions
+- ✅ SQLite isolation (temporary test databases)
+
+Tests run in under 0.4 seconds and have caught real security bugs!
+
+## Troubleshooting
+
+### "Invalid Steam API key"
+- Ensure your API key is 32 hexadecimal characters
+- Get a new key at https://steamcommunity.com/dev/apikey
+
+### "Invalid Discord webhook"
+- Webhook URL must start with `https://` (HTTP not allowed for security)
+- Must contain `/api/webhooks/` in the path
+- Both `discord.com` and `discordapp.com` domains are supported
+
+### "No updates detected" (but you know mods updated)
+- Run `python3 main.py --show-updates` to see stored timestamps
+- Delete `db/mods.db` to reset and redetect all mods as new
+- Check `--log-level DEBUG` for detailed API responses
+
+### First run shows all mods as "updated"
+- This is normal! The database is empty on first run
+- All tracked mods will be added to the database
+- Subsequent runs will only notify about actual updates
+
+## File Structure
+
+```
+workshop-watcher/
+├── main.py              # Entry point
+├── config/
+│   ├── config.json      # API keys, webhook, roles
+│   └── modlist.json     # Workshop items to track
+├── db/
+│   └── mods.db         # SQLite database (auto-created)
+├── utils/
+│   ├── config_loader.py # Configuration management
+│   ├── discord.py       # Discord webhook sender
+│   ├── helpers.py       # Utility functions
+│   └── validators.py    # Input validation
+├── db/
+│   └── db.py           # Database operations
+└── tests/
+    ├── test_*.py       # Unit tests
+    └── README.md       # Testing documentation
+```
+
+## License
+
+This project is open source. Feel free to use and modify as needed!
+
+````
