@@ -1,6 +1,8 @@
 import sqlite3
+from typing import Optional, Dict, Any, Tuple
 from utils.helpers import now_ts
 from utils.logger import get_logger
+from models.types import ModData
 
 DB_SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -54,7 +56,7 @@ def connect_db(path: str) -> sqlite3.Connection:
         logger.error(f"Unexpected error connecting to database {path}: {e}")
         raise
 
-def upsert_mod(conn: sqlite3.Connection, row):
+def upsert_mod(conn: sqlite3.Connection, row: Dict[str, Any]) -> None:
     """Insert or update mod data in the database."""
     logger = get_logger()
     
@@ -107,22 +109,23 @@ def upsert_mod(conn: sqlite3.Connection, row):
         logger.error(f"Unexpected error upserting mod {row.get('id', 'unknown')}: {e}")
         raise
 
-def get_known(conn: sqlite3.Connection, mid: int):
+def get_known(conn: sqlite3.Connection, mid: int) -> Optional[Tuple]:
+    """Get the last known update timestamp for a mod."""
     cur = conn.execute("SELECT time_updated FROM mods WHERE id = ?", (mid,))
     return cur.fetchone()
 
-def get_mod_by_id(conn: sqlite3.Connection, mod_id: int):
+def get_mod_by_id(conn: sqlite3.Connection, mod_id: int) -> Optional[Dict[str, Any]]:
     """Get complete mod data as dictionary."""
     cur = conn.execute("SELECT * FROM mods WHERE id = ?", (mod_id,))
     row = cur.fetchone()
     return dict(row) if row else None
 
-def get_steam_user(conn: sqlite3.Connection, steam_id: str):
+def get_steam_user(conn: sqlite3.Connection, steam_id: str) -> Optional[Tuple]:
     """Get cached Steam user data from database."""
     cur = conn.execute("SELECT persona_name, real_name, profile_url, avatar_url, last_fetched, fetch_failed FROM steam_users WHERE steam_id = ?", (steam_id,))
     return cur.fetchone()
 
-def upsert_steam_user(conn: sqlite3.Connection, user_data: dict):
+def upsert_steam_user(conn: sqlite3.Connection, user_data: Dict[str, Any]) -> None:
     """Insert or update Steam user data in the database."""
     conn.execute(
         """
@@ -147,7 +150,7 @@ def upsert_steam_user(conn: sqlite3.Connection, user_data: dict):
         ),
     )
 
-def mark_steam_user_fetch_failed(conn: sqlite3.Connection, steam_id: str):
+def mark_steam_user_fetch_failed(conn: sqlite3.Connection, steam_id: str) -> None:
     """Mark a Steam user fetch as failed to avoid repeated attempts."""
     conn.execute(
         """

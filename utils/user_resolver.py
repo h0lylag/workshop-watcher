@@ -1,7 +1,7 @@
 """Steam user resolution and caching module."""
 import os
 import sqlite3
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Any
 from db.db import get_steam_user, upsert_steam_user, mark_steam_user_fetch_failed
 from utils.steam import fetch_steam_user_summaries, normalize_steam_user
 from utils.helpers import now_ts
@@ -14,7 +14,7 @@ USER_CACHE_DURATION = USER_CACHE_TTL_SECONDS
 # Module-level logger
 logger = get_logger()
 
-def resolve_steam_usernames(conn: sqlite3.Connection, steam_ids: List[str], cfg: Dict) -> Dict[str, Optional[str]]:
+def resolve_steam_usernames(conn: sqlite3.Connection, steam_ids: List[str], cfg: Dict[str, Any]) -> Dict[str, Optional[str]]:
     """
     Resolve Steam IDs to usernames, using cached data when available.
     
@@ -109,7 +109,7 @@ def resolve_steam_usernames(conn: sqlite3.Connection, steam_ids: List[str], cfg:
     
     return results
 
-def update_mod_author_names(conn: sqlite3.Connection, cfg: Dict) -> int:
+def update_mod_author_names(conn: sqlite3.Connection, cfg: Dict[str, Any]) -> int:
     """
     Update author names for all mods in the database that have author_id but no author_name.
     

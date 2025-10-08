@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 logger = logging.getLogger("config_loader")
 
 
-def load_config(path: str) -> dict:
+def load_config(path: str) -> Dict:
     """Loads a JSON config file from the given path, with environment variable overrides.
     
     Environment variable mappings:

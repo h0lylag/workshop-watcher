@@ -6,7 +6,7 @@ import datetime as dt
 import urllib.request
 import time
 from urllib.error import HTTPError, URLError
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from utils.steam import WORKSHOP_ITEM_URL, WORKSHOP_CHANGELOG_URL
 from utils.logger import get_logger
 from utils.config_loader import load_config
@@ -19,6 +19,7 @@ from utils.constants import (
     MAX_RETRY_DELAY_SECONDS,
     SERVER_ERROR_RETRY_DELAY_SECONDS,
 )
+from models.types import DiscordEmbed
 
 # Module-level logger
 logger = get_logger()
@@ -42,7 +43,7 @@ def human_size(n: Optional[object]) -> str:
         n /= 1024
     return f"{n:.1f} EB"
 
-def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None, max_retries: int = MAX_DISCORD_RETRIES, ping_roles: Optional[List[int]] = None) -> bool:
+def send_discord(webhook: str, content: str, embeds: Optional[List[Dict[str, Any]]] = None, max_retries: int = MAX_DISCORD_RETRIES, ping_roles: Optional[List[int]] = None) -> bool:
     """Send a Discord webhook with rate limit handling and exponential backoff retry. Optionally pings roles."""
 
     if not webhook:
@@ -145,7 +146,7 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None
     logger.error(f"Discord webhook failed after {max_retries} attempts")
     return False
 
-def build_embed(entry: Dict, alias_map: Dict[int, str], old_updated: Optional[int]) -> Dict:
+def build_embed(entry: Dict[str, Any], alias_map: Dict[int, str], old_updated: Optional[int]) -> Dict[str, Any]:
     """Build a Discord embed for a workshop mod."""
     
     try:

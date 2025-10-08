@@ -1,10 +1,11 @@
 import json
 import urllib.parse
 import urllib.request
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from utils.helpers import chunked, now_ts
 from utils.logger import get_logger
 from utils.constants import STEAM_WORKSHOP_BATCH_SIZE, STEAM_USER_BATCH_SIZE, STEAM_API_TIMEOUT
+from models.types import ModData
 
 STEAM_API_URL = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
 STEAM_USER_API_URL = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/"
@@ -53,7 +54,8 @@ def fetch_published_file_details(ids: List[int]) -> Dict[int, Dict]:
     logger.info(f"Successfully fetched details for {len(results)} out of {len(ids)} mod(s)")
     return results
 
-def normalize_api_item(raw: Dict) -> Dict:
+def normalize_api_item(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert Steam API response to normalized mod data dictionary."""
     id_int = int(raw.get("publishedfileid"))
     
     # Parse tags if available
@@ -82,7 +84,7 @@ def normalize_api_item(raw: Dict) -> Dict:
         "preview_url": raw.get("preview_url"),
     }
 
-def fetch_steam_user_summaries(steam_ids: List[str], api_key: str) -> Dict[str, Dict]:
+def fetch_steam_user_summaries(steam_ids: List[str], api_key: str) -> Dict[str, Dict[str, Any]]:
     """Fetch Steam user summaries using Steam Web API."""
     logger = get_logger()
     
@@ -131,7 +133,7 @@ def fetch_steam_user_summaries(steam_ids: List[str], api_key: str) -> Dict[str, 
     logger.info(f"Successfully fetched user data for {len(results)} out of {len(steam_ids)} Steam ID(s)")
     return results
 
-def normalize_steam_user(raw: Dict) -> Dict:
+def normalize_steam_user(raw: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize Steam user data from API response."""
     return {
         "steam_id": raw.get("steamid"),
