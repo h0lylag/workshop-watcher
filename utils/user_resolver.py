@@ -35,7 +35,11 @@ def resolve_steam_usernames(conn: sqlite3.Connection, steam_ids: List[str], cfg:
     # Get Steam API key from config (which may have been overridden by environment variable)
     api_key = cfg.get("steam_api_key")
     if not api_key:
-        logger.warning("No Steam API key found in config.json or STEAM_API_KEY environment variable")
+        logger.warning(
+            "Steam API key not configured - author names will not be resolved.\n"
+            "  To enable: Add 'steam_api_key' to config.json or set STEAM_API_KEY env var\n"
+            "  Get a key at: https://steamcommunity.com/dev/apikey"
+        )
         return {steam_id: None for steam_id in steam_ids}
     
     results: Dict[str, Optional[str]] = {}

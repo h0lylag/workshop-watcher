@@ -16,7 +16,12 @@ def poll_once(cfg: Dict, db_path: str) -> int:
 
     webhook = cfg.get("discord_webhook")
     if not webhook:
-        logger.error("Discord webhook not provided in config or DISCORD_WEBHOOK environment variable")
+        logger.error(
+            "Discord webhook required. Set it in one of these ways:\n"
+            "  1. Add 'discord_webhook' to config/config.json\n"
+            "  2. Set DISCORD_WEBHOOK environment variable\n"
+            "  3. Create webhook: Server Settings -> Integrations -> Webhooks -> New Webhook"
+        )
         return 2
 
     # Extract ping_roles for notifications
@@ -35,7 +40,12 @@ def poll_once(cfg: Dict, db_path: str) -> int:
             continue
 
     if not ids:
-        logger.error("No valid mod IDs found in config")
+        logger.error(
+            "No valid mod IDs found in modlist. Check that:\n"
+            "  1. config/modlist.json exists and has 'workshop_items' array\n"
+            "  2. Each item has a valid numeric 'id' field\n"
+            "  3. Example: {\"workshop_items\": [{\"id\": 3458840545, \"name\": \"My Mod\"}]}"
+        )
         return 2
 
     logger.info(f"Monitoring {len(ids)} mod(s)")
@@ -43,7 +53,13 @@ def poll_once(cfg: Dict, db_path: str) -> int:
     try:
         conn = connect_db(db_path)
     except Exception as e:
-        logger.error(f"Failed to connect to database {db_path}: {e}")
+        logger.error(
+            f"Failed to connect to database at {db_path}: {e}\n"
+            "  Check that:\n"
+            "  1. The directory exists and is writable\n"
+            "  2. You have permission to create/access the database file\n"
+            "  3. The path is correct (use --db option or DB_PATH env var to change)"
+        )
         return 2
     
     try:

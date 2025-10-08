@@ -51,7 +51,11 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict[str, Any
         return False
 
     if not webhook.startswith(('http://', 'https://')):
-        logger.error(f"Invalid Discord webhook URL format: {webhook[:50]}...")
+        logger.error(
+            f"Invalid Discord webhook URL format: {webhook[:50]}...\n"
+            "  Webhook URL must start with https:// and look like:\n"
+            "  https://discord.com/api/webhooks/123456789/abcdef..."
+        )
         return False
 
     # Use provided ping_roles or default to empty list

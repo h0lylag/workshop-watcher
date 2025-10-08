@@ -48,7 +48,14 @@ def main():
         logger.info(f"Loaded modlist from {args.modlist}")
         logger.debug(f"Monitoring {len(cfg.get('workshop_items', []))} workshop item(s)")
     except Exception as e:
-        logger.error(f"Failed to load config or modlist: {e}")
+        logger.error(
+            f"Failed to load configuration: {e}\n"
+            "  Check that:\n"
+            "  1. Config file exists at {args.config} (or set CONFIG_PATH env var)\n"
+            "  2. Modlist file exists at {args.modlist} (or set MODLIST_PATH env var)\n"
+            "  3. Both files contain valid JSON\n"
+            "  4. Files are readable"
+        )
         sys.exit(2)
 
     # New quick command: show updates and exit
@@ -80,8 +87,12 @@ def main():
         logger.info("Running in author update mode")
         api_key = cfg.get("steam_api_key")
         if not api_key or api_key == "PUT_STEAM_API_KEY_HERE":
-            logger.error("Steam API key required for updating author names. Set steam_api_key in config.json or STEAM_API_KEY environment variable.")
-            logger.info("Get your Steam API key at: https://steamcommunity.com/dev/apikey")
+            logger.error(
+                "Steam API key required for updating author names. Set it in one of these ways:\n"
+                "  1. Add 'steam_api_key' to config/config.json\n"
+                "  2. Set STEAM_API_KEY environment variable\n"
+                "  3. Get a key at: https://steamcommunity.com/dev/apikey"
+            )
             sys.exit(1)
         try:
             conn = connect_db(args.db)
