@@ -42,14 +42,11 @@ def main():
     try:
         base_cfg = load_config(args.config)
         modlist_cfg = load_modlist(args.modlist)
-        global_config = base_cfg.copy()
-        global_config.update(modlist_cfg)
-        # Make global config available for import in other modules
-        import builtins
-        builtins.global_config = global_config
+        cfg = base_cfg.copy()
+        cfg.update(modlist_cfg)
         logger.info(f"Loaded config from {args.config}")
         logger.info(f"Loaded modlist from {args.modlist}")
-        logger.debug(f"Monitoring {len(global_config.get('workshop_items', []))} workshop item(s)")
+        logger.debug(f"Monitoring {len(cfg.get('workshop_items', []))} workshop item(s)")
     except Exception as e:
         logger.error(f"Failed to load config or modlist: {e}")
         sys.exit(2)
@@ -76,19 +73,19 @@ def main():
             logger.error(f"Failed listing updates: {e}")
             sys.exit(1)
 
-    if not global_config.get("discord_webhook") and not args.update_authors:
+    if not cfg.get("discord_webhook") and not args.update_authors:
         logger.warning("No webhook in config or DISCORD_WEBHOOK environment variable; will fail to notify")
 
     if args.update_authors:
         logger.info("Running in author update mode")
-        api_key = global_config.get("steam_api_key")
+        api_key = cfg.get("steam_api_key")
         if not api_key or api_key == "PUT_STEAM_API_KEY_HERE":
             logger.error("Steam API key required for updating author names. Set steam_api_key in config.json or STEAM_API_KEY environment variable.")
             logger.info("Get your Steam API key at: https://steamcommunity.com/dev/apikey")
             sys.exit(1)
         try:
             conn = connect_db(args.db)
-            updated_count = update_mod_author_names(conn, global_config)
+            updated_count = update_mod_author_names(conn, cfg)
             conn.close()
             logger.info(f"Updated author names for {updated_count} mod(s)")
             sys.exit(0)
@@ -101,7 +98,7 @@ def main():
         try:
             while True:
                 try:
-                    poll_once(global_config, args.db)
+                    poll_once(cfg, args.db)
                 except KeyboardInterrupt:
                     logger.info("Received interrupt signal, stopping after current cycle")
                     break
@@ -118,7 +115,7 @@ def main():
     else:
         logger.info("Running single poll")
         try:
-            rc = poll_once(global_config, args.db)
+            rc = poll_once(cfg, args.db)
             logger.info("Single poll completed successfully")
             sys.exit(rc)
         except Exception as e:

@@ -19,6 +19,9 @@ def poll_once(cfg: Dict, db_path: str) -> int:
         logger.error("Discord webhook not provided in config or DISCORD_WEBHOOK environment variable")
         return 2
 
+    # Extract ping_roles for notifications
+    ping_roles = cfg.get("ping_roles", [])
+
     ids: List[int] = []
     alias_map: Dict[int, str] = {}
     for item in cfg["workshop_items"]:
@@ -198,7 +201,7 @@ def poll_once(cfg: Dict, db_path: str) -> int:
             for chunk in chunked(new_embeds, DISCORD_MAX_EMBEDS_PER_MESSAGE):
                 chunk_size = len(chunk)
                 content_msg = "Workshop mod added" if chunk_size == 1 else "Workshop mods added"
-                if send_discord(webhook, content=content_msg, embeds=chunk):
+                if send_discord(webhook, content=content_msg, embeds=chunk, ping_roles=ping_roles):
                     successes += len(chunk)
                 else:
                     logger.error(f"Failed to send {chunk_size} new mod notification(s)")
@@ -213,7 +216,7 @@ def poll_once(cfg: Dict, db_path: str) -> int:
             for chunk in chunked(updated_embeds, DISCORD_MAX_EMBEDS_PER_MESSAGE):
                 chunk_size = len(chunk)
                 content_msg = "Workshop mod updated" if chunk_size == 1 else "Workshop mods updated"
-                if send_discord(webhook, content=content_msg, embeds=chunk):
+                if send_discord(webhook, content=content_msg, embeds=chunk, ping_roles=ping_roles):
                     successes += len(chunk)
                 else:
                     logger.error(f"Failed to send {chunk_size} update notification(s)")

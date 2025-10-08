@@ -19,7 +19,6 @@ from utils.constants import (
     MAX_RETRY_DELAY_SECONDS,
     SERVER_ERROR_RETRY_DELAY_SECONDS,
 )
-import builtins
 
 # Module-level logger
 logger = get_logger()
@@ -54,14 +53,9 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None
         logger.error(f"Invalid Discord webhook URL format: {webhook[:50]}...")
         return False
 
-    # Load ping roles from global config if not provided
+    # Use provided ping_roles or default to empty list
     if ping_roles is None:
-        try:
-            config = getattr(builtins, 'global_config', {})
-            ping_roles = config.get("ping_roles", [])
-        except Exception as e:
-            logger.warning(f"Could not load ping_roles from global_config: {e}")
-            ping_roles = []
+        ping_roles = []
 
     # Build role mention string
     role_mentions = " ".join([f"<@&{rid}>" for rid in ping_roles]) if ping_roles else ""
