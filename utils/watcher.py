@@ -1,10 +1,10 @@
 import os
 import sys
 from typing import Dict, List, Optional
-from db.db import connect_db, upsert_mod, get_known, get_mod_by_id
+from db.db import connect_db, upsert_mod, get_last_update_time, get_mod_by_id
 from utils.steam import fetch_published_file_details, normalize_api_item
 from utils.discord import build_embed, send_discord
-from utils.helpers import now_ts, chunked, create_empty_mod_record
+from utils.helpers import get_current_timestamp, chunk_list, create_empty_mod_record
 from utils.user_resolver import resolve_steam_usernames, update_mod_author_names, USER_CACHE_DURATION
 from utils.logger import get_logger
 from utils.constants import DISCORD_MAX_EMBEDS_PER_MESSAGE
@@ -82,8 +82,7 @@ def poll_once(cfg: Dict, db_path: str) -> int:
 
             norm = normalize_api_item(raw)
             normalized_cache[mid] = norm
-            known = get_known(conn, mid)
-            old_updated = known[0] if known else None
+            old_updated = get_last_update_time(conn, mid)
 
             # Collect author ID for resolution
             if norm.get("author_id"):
@@ -109,7 +108,7 @@ def poll_once(cfg: Dict, db_path: str) -> int:
             logger.info(f"Resolving usernames for {len(unique_authors)} unique author(s)")
             # New log: show how many are cached vs need fetch
             try:
-                current_time = now_ts()
+                current_time = get_current_timestamp()
                 if unique_authors:
                     placeholders = ",".join(["?"] * len(unique_authors))
                     cur_chk = conn.execute(
@@ -185,7 +184,7 @@ def poll_once(cfg: Dict, db_path: str) -> int:
         if new_embeds:
             logger.info(f"Preparing notifications for {len(new_embeds)} new mod(s)")
             successes = 0
-            for chunk in chunked(new_embeds, DISCORD_MAX_EMBEDS_PER_MESSAGE):
+            for chunk in chunk_list(new_embeds, DISCORD_MAX_EMBEDS_PER_MESSAGE):
                 chunk_size = len(chunk)
                 content_msg = "Workshop mod added" if chunk_size == 1 else "Workshop mods added"
                 if send_discord(webhook, content=content_msg, embeds=chunk, ping_roles=ping_roles):
@@ -200,7 +199,7 @@ def poll_once(cfg: Dict, db_path: str) -> int:
         if updated_embeds:
             logger.info(f"Preparing notifications for {len(updated_embeds)} updated mod(s)")
             successes = 0
-            for chunk in chunked(updated_embeds, DISCORD_MAX_EMBEDS_PER_MESSAGE):
+            for chunk in chunk_list(updated_embeds, DISCORD_MAX_EMBEDS_PER_MESSAGE):
                 chunk_size = len(chunk)
                 content_msg = "Workshop mod updated" if chunk_size == 1 else "Workshop mods updated"
                 if send_discord(webhook, content=content_msg, embeds=chunk, ping_roles=ping_roles):

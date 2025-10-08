@@ -4,7 +4,7 @@ import sqlite3
 from typing import Dict, List, Optional, Set, Any
 from db.db import get_steam_user, upsert_steam_user, mark_steam_user_fetch_failed
 from utils.steam import fetch_steam_user_summaries, normalize_steam_user
-from utils.helpers import now_ts
+from utils.helpers import get_current_timestamp
 from utils.logger import get_logger
 from utils.constants import USER_CACHE_TTL_SECONDS
 
@@ -44,7 +44,7 @@ def resolve_steam_usernames(conn: sqlite3.Connection, steam_ids: List[str], cfg:
     
     results: Dict[str, Optional[str]] = {}
     ids_to_fetch: Set[str] = set()
-    current_time = now_ts()
+    current_time = get_current_timestamp()
     
     # Check cache for each Steam ID
     for steam_id in steam_ids:

@@ -1,6 +1,6 @@
 import sqlite3
 from typing import Optional, Dict, Any, Tuple
-from utils.helpers import now_ts
+from utils.helpers import get_current_timestamp
 from utils.logger import get_logger
 from models.types import ModData
 
@@ -109,10 +109,11 @@ def upsert_mod(conn: sqlite3.Connection, row: Dict[str, Any]) -> None:
         logger.error(f"Unexpected error upserting mod {row.get('id', 'unknown')}: {e}")
         raise
 
-def get_known(conn: sqlite3.Connection, mid: int) -> Optional[Tuple]:
-    """Get the last known update timestamp for a mod."""
-    cur = conn.execute("SELECT time_updated FROM mods WHERE id = ?", (mid,))
-    return cur.fetchone()
+def get_last_update_time(conn: sqlite3.Connection, mod_id: int) -> Optional[int]:
+    """Get the timestamp when mod was last updated."""
+    cur = conn.execute("SELECT time_updated FROM mods WHERE id = ?", (mod_id,))
+    row = cur.fetchone()
+    return row[0] if row else None
 
 def get_mod_by_id(conn: sqlite3.Connection, mod_id: int) -> Optional[Dict[str, Any]]:
     """Get complete mod data as dictionary."""
@@ -160,5 +161,5 @@ def mark_steam_user_fetch_failed(conn: sqlite3.Connection, steam_id: str) -> Non
             last_fetched=excluded.last_fetched,
             fetch_failed=1
         """,
-        (steam_id, now_ts()),
+        (steam_id, get_current_timestamp()),
     )

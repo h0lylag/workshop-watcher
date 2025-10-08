@@ -2,7 +2,7 @@ import json
 import urllib.parse
 import urllib.request
 from typing import Dict, List, Optional, Any
-from utils.helpers import chunked, now_ts
+from utils.helpers import chunk_list, get_current_timestamp
 from utils.logger import get_logger
 from utils.constants import STEAM_WORKSHOP_BATCH_SIZE, STEAM_USER_BATCH_SIZE, STEAM_API_TIMEOUT
 from models.types import ModData
@@ -18,7 +18,7 @@ def fetch_published_file_details(ids: List[int]) -> Dict[int, Dict]:
     logger.debug(f"Fetching details for {len(ids)} mod(s)")
     
     results: Dict[int, Dict] = {}
-    for batch in chunked(ids, STEAM_WORKSHOP_BATCH_SIZE):
+    for batch in chunk_list(ids, STEAM_WORKSHOP_BATCH_SIZE):
         try:
             logger.debug(f"Processing batch of {len(batch)} mod(s)")
             data = {"itemcount": len(batch)}
@@ -74,7 +74,7 @@ def normalize_api_item(raw: Dict[str, Any]) -> Dict[str, Any]:
         "file_size": raw.get("file_size"),
         "time_created": raw.get("time_created"),
         "time_updated": raw.get("time_updated"),
-        "last_checked": now_ts(),
+        "last_checked": get_current_timestamp(),
         "description": raw.get("description"),
         "views": raw.get("views"),
         "subscriptions": raw.get("subscriptions"),
@@ -100,7 +100,7 @@ def fetch_steam_user_summaries(steam_ids: List[str], api_key: str) -> Dict[str, 
     results: Dict[str, Dict] = {}
     
     # Steam API allows up to 100 Steam IDs per request
-    for batch in chunked(steam_ids, STEAM_USER_BATCH_SIZE):
+    for batch in chunk_list(steam_ids, STEAM_USER_BATCH_SIZE):
         try:
             logger.debug(f"Processing user batch of {len(batch)} Steam ID(s)")
             steam_ids_str = ",".join(batch)
@@ -141,6 +141,6 @@ def normalize_steam_user(raw: Dict[str, Any]) -> Dict[str, Any]:
         "real_name": raw.get("realname"),
         "profile_url": raw.get("profileurl"),
         "avatar_url": raw.get("avatarfull"),
-        "last_fetched": now_ts(),
+        "last_fetched": get_current_timestamp(),
         "fetch_failed": 0,
     }
