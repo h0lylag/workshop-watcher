@@ -1,6 +1,6 @@
-# Workshop Watcher
+# Workshop Watcher 
 
-A Steam Workshop monitoring tool that tracks mod updates and sends Discord notifications.
+A (Vibe-Coded) Steam Workshop monitoring tool that tracks mod updates and sends Discord notifications.
 
 ## How It Works
 
