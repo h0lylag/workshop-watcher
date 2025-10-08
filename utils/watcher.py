@@ -1,6 +1,8 @@
 import os
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Any
+from dataclasses import dataclass
+import sqlite3
 from db.db import connect_db, upsert_mod, get_last_update_time, get_mod_by_id
 from utils.steam import fetch_published_file_details, normalize_api_item
 from utils.discord import build_embed, send_discord
@@ -9,11 +11,25 @@ from utils.user_resolver import resolve_steam_usernames, update_mod_author_names
 from utils.logger import get_logger
 from utils.constants import DISCORD_MAX_EMBEDS_PER_MESSAGE
 
-def poll_once(cfg: Dict, db_path: str) -> int:
-    """Poll Steam Workshop once for mod updates."""
-    logger = get_logger()
-    logger.info("Starting polling cycle")
 
+@dataclass
+class WorkshopItems:
+    """Parsed workshop items with IDs and aliases."""
+    ids: List[int]
+    alias_map: Dict[int, str]
+
+
+@dataclass
+class ModUpdate:
+    """Information about a mod update."""
+    mod_id: int
+    old_updated: Optional[int]
+    is_new: bool
+
+
+def _validate_poll_config(cfg: Dict[str, Any]) -> bool:
+    """Validate polling configuration has required fields."""
+    logger = get_logger()
     webhook = cfg.get("discord_webhook")
     if not webhook:
         logger.error(
@@ -22,13 +38,16 @@ def poll_once(cfg: Dict, db_path: str) -> int:
             "  2. Set DISCORD_WEBHOOK environment variable\n"
             "  3. Create webhook: Server Settings -> Integrations -> Webhooks -> New Webhook"
         )
-        return 2
+        return False
+    return True
 
-    # Extract ping_roles for notifications
-    ping_roles = cfg.get("ping_roles", [])
 
+def _parse_workshop_items(cfg: Dict[str, Any]) -> Optional[WorkshopItems]:
+    """Parse workshop items from configuration."""
+    logger = get_logger()
     ids: List[int] = []
     alias_map: Dict[int, str] = {}
+    
     for item in cfg["workshop_items"]:
         try:
             mid = int(item["id"])
@@ -38,7 +57,7 @@ def poll_once(cfg: Dict, db_path: str) -> int:
         except (ValueError, TypeError, KeyError) as e:
             logger.warning(f"Invalid workshop item entry in config: {item}. Error: {e}")
             continue
-
+    
     if not ids:
         logger.error(
             "No valid mod IDs found in modlist. Check that:\n"
@@ -46,10 +65,240 @@ def poll_once(cfg: Dict, db_path: str) -> int:
             "  2. Each item has a valid numeric 'id' field\n"
             "  3. Example: {\"workshop_items\": [{\"id\": 3458840545, \"name\": \"My Mod\"}]}"
         )
-        return 2
-
-    logger.info(f"Monitoring {len(ids)} mod(s)")
+        return None
     
+    logger.info(f"Monitoring {len(ids)} mod(s)")
+    return WorkshopItems(ids=ids, alias_map=alias_map)
+
+
+def _fetch_and_process_mods(
+    conn: sqlite3.Connection,
+    workshop_items: WorkshopItems
+) -> Tuple[List[ModUpdate], Dict[int, Dict[str, Any]], List[str]]:
+    """
+    Fetch mod details from Steam and process them.
+    
+    Returns:
+        Tuple of (mod_updates, normalized_cache, author_ids_to_resolve)
+    """
+    logger = get_logger()
+    logger.debug("Fetching mod details from Steam API")
+    
+    details = fetch_published_file_details(workshop_items.ids)
+    logger.debug(f"Received details for {len(details)} mod(s)")
+    
+    normalized_cache: Dict[int, Dict[str, Any]] = {}
+    author_ids_to_resolve: List[str] = []
+    mod_updates: List[ModUpdate] = []
+    
+    for mid in workshop_items.ids:
+        raw = details.get(mid)
+        if not raw or int(raw.get("result", 0)) != 1:
+            logger.warning(f"No valid data for mod {mid} from Steam API")
+            upsert_mod(conn, create_empty_mod_record(mid))
+            continue
+        
+        norm = normalize_api_item(raw)
+        normalized_cache[mid] = norm
+        old_updated = get_last_update_time(conn, mid)
+        
+        # Collect author ID for resolution
+        if norm.get("author_id"):
+            author_ids_to_resolve.append(norm["author_id"])
+        
+        upsert_mod(conn, norm)
+        
+        # Detect if this is an update
+        has_update = (
+            (old_updated is None and norm.get("time_updated")) or 
+            (old_updated and norm.get("time_updated") and norm["time_updated"] > old_updated)
+        )
+        
+        if has_update:
+            is_new = old_updated is None
+            logger.info(f"Detected {'new' if is_new else 'updated'} mod: {norm.get('title', mid)}")
+            mod_updates.append(ModUpdate(
+                mod_id=mid,
+                old_updated=old_updated,
+                is_new=is_new
+            ))
+    
+    return mod_updates, normalized_cache, author_ids_to_resolve
+
+
+def _resolve_author_names(
+    conn: sqlite3.Connection,
+    author_ids: List[str],
+    normalized_cache: Dict[int, Dict[str, Any]],
+    cfg: Dict[str, Any]
+) -> None:
+    """Resolve Steam usernames for mod authors and update database."""
+    if not author_ids:
+        return
+    
+    logger = get_logger()
+    unique_authors = list(set(author_ids))
+    logger.info(f"Resolving usernames for {len(unique_authors)} unique author(s)")
+    
+    # Show cache hit statistics
+    try:
+        current_time = get_current_timestamp()
+        if unique_authors:
+            placeholders = ",".join(["?"] * len(unique_authors))
+            cur_chk = conn.execute(
+                f"SELECT steam_id, last_fetched, fetch_failed, persona_name FROM steam_users WHERE steam_id IN ({placeholders})",
+                unique_authors
+            )
+            cache_hits = 0
+            to_query = set(unique_authors)
+            for row in cur_chk.fetchall():
+                steam_id = row[0]
+                last_fetched = row[1]
+                fetch_failed = row[2]
+                persona_name = row[3]
+                if (
+                    persona_name
+                    and not fetch_failed
+                    and isinstance(last_fetched, int)
+                    and (current_time - last_fetched) < USER_CACHE_DURATION
+                ):
+                    cache_hits += 1
+                    if steam_id in to_query:
+                        to_query.discard(steam_id)
+            logger.info(
+                f"Author cache hits: {cache_hits} / {len(unique_authors)}; querying {len(to_query)}"
+            )
+    except Exception as e:
+        logger.debug(f"Author cache inspection failed: {e}")
+    
+    # Resolve usernames
+    try:
+        usernames = resolve_steam_usernames(conn, unique_authors, cfg)
+        for mid, norm in normalized_cache.items():
+            if norm.get("author_id") and norm["author_id"] in usernames and usernames[norm["author_id"]]:
+                conn.execute(
+                    "UPDATE mods SET author_name = ? WHERE id = ?",
+                    (usernames[norm["author_id"]], mid)
+                )
+                logger.debug(f"Updated author name for mod {mid}: {usernames[norm['author_id']]}")
+    except Exception as e:
+        logger.error(f"Failed to resolve Steam usernames: {e}", exc_info=True)
+    
+    # Also update any existing mods that don't have author names
+    try:
+        updated_count = update_mod_author_names(conn, cfg)
+        if updated_count > 0:
+            logger.info(f"Updated author names for {updated_count} existing mod(s)")
+    except Exception as e:
+        logger.error(f"Failed to update existing author names: {e}", exc_info=True)
+
+
+def _build_notification_embeds(
+    conn: sqlite3.Connection,
+    mod_updates: List[ModUpdate],
+    alias_map: Dict[int, str]
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Build Discord embeds for new and updated mods."""
+    logger = get_logger()
+    new_embeds = []
+    updated_embeds = []
+    
+    for update in mod_updates:
+        try:
+            mod = dict(conn.execute("SELECT * FROM mods WHERE id = ?", (update.mod_id,)).fetchone())
+        except Exception as e:
+            logger.error(f"Failed to fetch mod {update.mod_id} for embed: {e}")
+            continue
+        
+        embed = build_embed(mod, alias_map, update.old_updated)
+        display_name = alias_map.get(update.mod_id, mod.get("name", "Unknown"))
+        
+        if update.is_new:
+            new_embeds.append(embed)
+            logger.info(f"New mod detected: {display_name} (ID: {update.mod_id})")
+        else:
+            updated_embeds.append(embed)
+            logger.info(f"Update detected for: {display_name} (ID: {update.mod_id})")
+    
+    return new_embeds, updated_embeds
+
+
+def _send_notifications(
+    webhook: str,
+    new_embeds: List[Dict[str, Any]],
+    updated_embeds: List[Dict[str, Any]],
+    ping_roles: Optional[List[str]]
+) -> int:
+    """Send Discord notifications for new and updated mods."""
+    logger = get_logger()
+    total_sent = 0
+    
+    # Send new mod notifications
+    if new_embeds:
+        logger.info(f"Sending {len(new_embeds)} new mod notification(s)")
+        for embed_batch in chunk_list(new_embeds, DISCORD_MAX_EMBEDS_PER_MESSAGE):
+            content = None
+            if ping_roles:
+                content = " ".join([f"<@&{rid}>" for rid in ping_roles])
+            
+            success = send_discord(
+                webhook,
+                embeds=embed_batch,
+                content=content
+            )
+            if success:
+                total_sent += len(embed_batch)
+            else:
+                logger.error(f"Failed to send batch of {len(embed_batch)} new mod notification(s)")
+    
+    # Send updated mod notifications
+    if updated_embeds:
+        logger.info(f"Sending {len(updated_embeds)} mod update notification(s)")
+        for embed_batch in chunk_list(updated_embeds, DISCORD_MAX_EMBEDS_PER_MESSAGE):
+            success = send_discord(
+                webhook,
+                embeds=embed_batch,
+                content=None
+            )
+            if success:
+                total_sent += len(embed_batch)
+            else:
+                logger.error(f"Failed to send batch of {len(embed_batch)} update notification(s)")
+    
+    return total_sent
+
+
+def poll_once(cfg: Dict, db_path: str) -> int:
+    """
+    Poll Steam Workshop once for mod updates and send Discord notifications.
+    
+    Orchestrates the complete polling workflow:
+    1. Validate configuration
+    2. Parse workshop items
+    3. Connect to database
+    4. Fetch and process mods from Steam
+    5. Resolve author usernames
+    6. Build Discord embeds
+    7. Send notifications
+    
+    Returns:
+        0 on success, 1 on critical error, 2 on configuration error
+    """
+    logger = get_logger()
+    logger.info("Starting polling cycle")
+    
+    # Step 1: Validate configuration
+    if not _validate_poll_config(cfg):
+        return 2
+    
+    # Step 2: Parse workshop items
+    workshop_items = _parse_workshop_items(cfg)
+    if not workshop_items:
+        return 2
+    
+    logger.info(f"Monitoring {len(workshop_items.ids)} mod(s)")
+    
+    # Step 3: Connect to database
     try:
         conn = connect_db(db_path)
     except Exception as e:
@@ -63,156 +312,27 @@ def poll_once(cfg: Dict, db_path: str) -> int:
         return 2
     
     try:
-        logger.debug("Fetching mod details from Steam API")
-        details = fetch_published_file_details(ids)
-        logger.debug(f"Received details for {len(details)} mod(s)")
-        # Cache normalized items so we don't recompute
-        normalized_cache: Dict[int, Dict] = {}
-
-        # Collect author IDs for Steam user resolution and process mods
-        author_ids_to_resolve: List[str] = []
-        mods_to_process = []  # Store mod data for later processing
-
-        for mid in ids:
-            raw = details.get(mid)
-            if not raw or int(raw.get("result", 0)) != 1:
-                logger.warning(f"No valid data for mod {mid} from Steam API")
-                upsert_mod(conn, create_empty_mod_record(mid))
-                continue
-
-            norm = normalize_api_item(raw)
-            normalized_cache[mid] = norm
-            old_updated = get_last_update_time(conn, mid)
-
-            # Collect author ID for resolution
-            if norm.get("author_id"):
-                author_ids_to_resolve.append(norm["author_id"])
-
-            upsert_mod(conn, norm)
-            
-            # Store mod info for later embed building
-            has_update = (old_updated is None and norm.get("time_updated")) or (old_updated and norm.get("time_updated") and norm["time_updated"] > old_updated)
-            if has_update:
-                logger.info(f"Detected {'new' if old_updated is None else 'updated'} mod: {norm.get('title', mid)}")
-            
-            mods_to_process.append({
-                "mid": mid,
-                "norm": norm,
-                "old_updated": old_updated,
-                "has_update": has_update
-            })
-
-        # Resolve Steam usernames for all collected author IDs
-        if author_ids_to_resolve:
-            unique_authors = list(set(author_ids_to_resolve))
-            logger.info(f"Resolving usernames for {len(unique_authors)} unique author(s)")
-            # New log: show how many are cached vs need fetch
-            try:
-                current_time = get_current_timestamp()
-                if unique_authors:
-                    placeholders = ",".join(["?"] * len(unique_authors))
-                    cur_chk = conn.execute(
-                        f"SELECT steam_id, last_fetched, fetch_failed, persona_name FROM steam_users WHERE steam_id IN ({placeholders})",
-                        unique_authors
-                    )
-                    cache_hits = 0
-                    to_query = set(unique_authors)
-                    for row in cur_chk.fetchall():
-                        steam_id = row[0]
-                        last_fetched = row[1]
-                        fetch_failed = row[2]
-                        persona_name = row[3]
-                        if (
-                            persona_name
-                            and not fetch_failed
-                            and isinstance(last_fetched, int)
-                            and (current_time - last_fetched) < USER_CACHE_DURATION
-                        ):
-                            cache_hits += 1
-                            if steam_id in to_query:
-                                to_query.discard(steam_id)
-                    logger.info(
-                        f"Author cache hits: {cache_hits} / {len(unique_authors)}; querying {len(to_query)}"
-                    )
-            except Exception as e:
-                logger.debug(f"Author cache inspection failed: {e}")
-            try:
-                usernames = resolve_steam_usernames(conn, unique_authors, cfg)
-                for mid in ids:
-                    if mid in normalized_cache:
-                        norm = normalized_cache[mid]
-                        if norm.get("author_id") and norm["author_id"] in usernames and usernames[norm["author_id"]]:
-                            conn.execute(
-                                "UPDATE mods SET author_name = ? WHERE id = ?",
-                                (usernames[norm["author_id"]], mid)
-                            )
-                            logger.debug(f"Updated author name for mod {mid}: {usernames[norm['author_id']]}")
-            except Exception as e:
-                logger.error(f"Failed to resolve Steam usernames: {e}", exc_info=True)
-
-        # Also update any existing mods that don't have author names
-        try:
-            updated_count = update_mod_author_names(conn, cfg)
-            if updated_count > 0:
-                logger.info(f"Updated author names for {updated_count} existing mod(s)")
-        except Exception as e:
-            logger.error(f"Failed to update existing author names: {e}", exc_info=True)
-
-        # Now build embeds with resolved usernames
-        new_embeds: List[Dict] = []
-        updated_embeds: List[Dict] = []
+        # Step 4: Fetch and process mods from Steam
+        mod_updates, normalized_cache, author_ids = _fetch_and_process_mods(conn, workshop_items)
         
-        for mod_info in mods_to_process:
-            if mod_info["has_update"]:
-                try:
-                    mod_data = get_mod_by_id(conn, mod_info["mid"])
-                    if mod_data:
-                        embed = build_embed(mod_data, alias_map, mod_info["old_updated"])
-                        if mod_info["old_updated"] is None:
-                            new_embeds.append(embed)
-                        else:
-                            updated_embeds.append(embed)
-                except Exception as e:
-                    logger.error(f"Failed to build embed for mod {mod_info['mid']}: {e}", exc_info=True)
-
+        # Step 5: Resolve author usernames
+        _resolve_author_names(conn, author_ids, normalized_cache, cfg)
+        
+        # Step 6: Build Discord embeds
+        new_embeds, updated_embeds = _build_notification_embeds(conn, mod_updates, workshop_items.alias_map)
+        
+        # Commit all database changes
         conn.commit()
         conn.close()
-
-        total_notifications = 0
         
-        # Send notifications for new mods
-        if new_embeds:
-            logger.info(f"Preparing notifications for {len(new_embeds)} new mod(s)")
-            successes = 0
-            for chunk in chunk_list(new_embeds, DISCORD_MAX_EMBEDS_PER_MESSAGE):
-                chunk_size = len(chunk)
-                content_msg = "Workshop mod added" if chunk_size == 1 else "Workshop mods added"
-                if send_discord(webhook, content=content_msg, embeds=chunk, ping_roles=ping_roles):
-                    successes += len(chunk)
-                else:
-                    logger.error(f"Failed to send {chunk_size} new mod notification(s)")
-            if successes:
-                logger.info(f"Successfully notified {successes} new mod(s)")
-                total_notifications += successes
-
-        # Send notifications for updated mods
-        if updated_embeds:
-            logger.info(f"Preparing notifications for {len(updated_embeds)} updated mod(s)")
-            successes = 0
-            for chunk in chunk_list(updated_embeds, DISCORD_MAX_EMBEDS_PER_MESSAGE):
-                chunk_size = len(chunk)
-                content_msg = "Workshop mod updated" if chunk_size == 1 else "Workshop mods updated"
-                if send_discord(webhook, content=content_msg, embeds=chunk, ping_roles=ping_roles):
-                    successes += len(chunk)
-                else:
-                    logger.error(f"Failed to send {chunk_size} update notification(s)")
-            if successes:
-                logger.info(f"Successfully notified {successes} update(s)")
-                total_notifications += successes
-
-        if total_notifications == 0:
+        # Step 7: Send notifications
+        webhook = cfg["discord_webhook"]
+        ping_roles = cfg.get("ping_roles")
+        total_sent = _send_notifications(webhook, new_embeds, updated_embeds, ping_roles)
+        
+        if total_sent == 0:
             logger.info("No updates detected")
-
+        
         logger.info("Polling cycle completed successfully")
         return 0
         
