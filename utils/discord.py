@@ -10,6 +10,15 @@ from typing import Dict, List, Optional
 from utils.steam import WORKSHOP_ITEM_URL, WORKSHOP_CHANGELOG_URL
 from utils.logger import get_logger
 from utils.config_loader import load_config
+from utils.constants import (
+    DISCORD_EMBED_TITLE_MAX_DISPLAY,
+    DISCORD_EMBED_DESC_MAX_DISPLAY,
+    DISCORD_EMBED_MAX_SIZE,
+    DISCORD_EMBED_HARD_LIMIT,
+    MAX_DISCORD_RETRIES,
+    MAX_RETRY_DELAY_SECONDS,
+    SERVER_ERROR_RETRY_DELAY_SECONDS,
+)
 import builtins
 
 # Module-level logger
@@ -34,7 +43,7 @@ def human_size(n: Optional[object]) -> str:
         n /= 1024
     return f"{n:.1f} EB"
 
-def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None, max_retries: int = 5, ping_roles: Optional[List[int]] = None) -> bool:
+def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None, max_retries: int = MAX_DISCORD_RETRIES, ping_roles: Optional[List[int]] = None) -> bool:
     """Send a Discord webhook with rate limit handling and exponential backoff retry. Optionally pings roles."""
 
     if not webhook:
@@ -98,7 +107,7 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None
                         logger.warning(f"Discord rate limited. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
                     else:
                         # Exponential backoff if no Retry-After header
-                        retry_delay = min(2 ** attempt, 60)  # Cap at 60 seconds
+                        retry_delay = min(2 ** attempt, MAX_RETRY_DELAY_SECONDS)
                         logger.warning(f"Discord rate limited (no retry-after header). Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
 
                     time.sleep(retry_delay)
@@ -106,13 +115,13 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None
 
                 except (ValueError, TypeError):
                     # Fallback to exponential backoff if Retry-After header is invalid
-                    retry_delay = min(2 ** attempt, 60)
+                    retry_delay = min(2 ** attempt, MAX_RETRY_DELAY_SECONDS)
                     logger.warning(f"Discord rate limited (invalid retry-after header). Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
                     time.sleep(retry_delay)
                     continue
 
             elif e.code >= 500:  # Server errors - retry with exponential backoff
-                retry_delay = min(2 ** attempt, 30)  # Cap at 30 seconds for server errors
+                retry_delay = min(2 ** attempt, SERVER_ERROR_RETRY_DELAY_SECONDS)
                 logger.warning(f"Discord server error {e.code}. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
                 time.sleep(retry_delay)
                 continue
@@ -127,14 +136,14 @@ def send_discord(webhook: str, content: str, embeds: Optional[List[Dict]] = None
 
         except URLError as e:
             # Network/connection errors - retry with exponential backoff
-            retry_delay = min(2 ** attempt, 30)
+            retry_delay = min(2 ** attempt, SERVER_ERROR_RETRY_DELAY_SECONDS)
             logger.warning(f"Discord webhook connection error: {e.reason}. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
             time.sleep(retry_delay)
             continue
 
         except Exception as e:
             # Unexpected errors - retry with exponential backoff
-            retry_delay = min(2 ** attempt, 30)
+            retry_delay = min(2 ** attempt, SERVER_ERROR_RETRY_DELAY_SECONDS)
             logger.warning(f"Discord webhook unexpected error: {e}. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
             time.sleep(retry_delay)
             continue
@@ -151,8 +160,8 @@ def build_embed(entry: Dict, alias_map: Dict[int, str], old_updated: Optional[in
         title = entry.get("title") or f"Workshop Item {mid}"
         
         # Limit title length to prevent embed size issues
-        if len(title) > 100:
-            title = title[:100] + "..."
+        if len(title) > DISCORD_EMBED_TITLE_MAX_DISPLAY:
+            title = title[:DISCORD_EMBED_TITLE_MAX_DISPLAY] + "..."
             logger.debug(f"Truncated long title for mod {mid}")
         
         display_title = f"{title} · ({alias})" if alias and alias != title else title
@@ -211,13 +220,15 @@ def build_embed(entry: Dict, alias_map: Dict[int, str], old_updated: Optional[in
         if author_id:
             footer_text += f" • Creator ID: {author_id}"
 
-        # Truncate description to 200 characters with word boundary
+        # Truncate description to configured max length with word boundary
         description = entry.get("description") or ""
-        if len(description) > 200:
-            truncated = description[:200]
+        if len(description) > DISCORD_EMBED_DESC_MAX_DISPLAY:
+            truncated = description[:DISCORD_EMBED_DESC_MAX_DISPLAY]
             # ensure we cut at last whitespace if possible
             cut = truncated.rfind(" ")
-            if cut > 150:  # only cut if we have a reasonable word boundary near end
+            # Only cut at word boundary if we have one in the last 25% of the text
+            word_boundary_threshold = int(DISCORD_EMBED_DESC_MAX_DISPLAY * 0.75)
+            if cut > word_boundary_threshold:
                 truncated = truncated[:cut]
             description = truncated + "..."
             logger.debug(f"Truncated long description for mod {mid}")
@@ -237,8 +248,8 @@ def build_embed(entry: Dict, alias_map: Dict[int, str], old_updated: Optional[in
         
         # Calculate approximate embed size for debugging
         embed_size = len(json.dumps(embed))
-        if embed_size > 5000:  # Warn if approaching Discord's 6000 char limit
-            logger.warning(f"Large embed for mod {mid}: {embed_size} characters")
+        if embed_size > DISCORD_EMBED_MAX_SIZE:
+            logger.warning(f"Large embed for mod {mid}: {embed_size} characters (approaching Discord's {DISCORD_EMBED_HARD_LIMIT} char limit)")
         else:
             logger.debug(f"Embed for mod {mid}: {embed_size} characters")
         

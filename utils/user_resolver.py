@@ -6,9 +6,10 @@ from db.db import get_steam_user, upsert_steam_user, mark_steam_user_fetch_faile
 from utils.steam import fetch_steam_user_summaries, normalize_steam_user
 from utils.helpers import now_ts
 from utils.logger import get_logger
+from utils.constants import USER_CACHE_TTL_SECONDS
 
-# Cache user data for 7 days (604800 seconds)
-USER_CACHE_DURATION = 604800
+# Cache user data for 7 days
+USER_CACHE_DURATION = USER_CACHE_TTL_SECONDS
 
 # Module-level logger
 logger = get_logger()

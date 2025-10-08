@@ -7,6 +7,7 @@ from utils.discord import build_embed, send_discord
 from utils.helpers import now_ts, chunked
 from utils.user_resolver import resolve_steam_usernames, update_mod_author_names, USER_CACHE_DURATION
 from utils.logger import get_logger
+from utils.constants import DISCORD_MAX_EMBEDS_PER_MESSAGE
 
 def poll_once(cfg: Dict, db_path: str) -> int:
     """Poll Steam Workshop once for mod updates."""
@@ -194,7 +195,7 @@ def poll_once(cfg: Dict, db_path: str) -> int:
         if new_embeds:
             logger.info(f"Preparing notifications for {len(new_embeds)} new mod(s)")
             successes = 0
-            for chunk in chunked(new_embeds, 10):
+            for chunk in chunked(new_embeds, DISCORD_MAX_EMBEDS_PER_MESSAGE):
                 chunk_size = len(chunk)
                 content_msg = "Workshop mod added" if chunk_size == 1 else "Workshop mods added"
                 if send_discord(webhook, content=content_msg, embeds=chunk):
@@ -209,7 +210,7 @@ def poll_once(cfg: Dict, db_path: str) -> int:
         if updated_embeds:
             logger.info(f"Preparing notifications for {len(updated_embeds)} updated mod(s)")
             successes = 0
-            for chunk in chunked(updated_embeds, 10):
+            for chunk in chunked(updated_embeds, DISCORD_MAX_EMBEDS_PER_MESSAGE):
                 chunk_size = len(chunk)
                 content_msg = "Workshop mod updated" if chunk_size == 1 else "Workshop mods updated"
                 if send_discord(webhook, content=content_msg, embeds=chunk):

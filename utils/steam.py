@@ -4,6 +4,7 @@ import urllib.request
 from typing import Dict, List, Optional
 from utils.helpers import chunked, now_ts
 from utils.logger import get_logger
+from utils.constants import STEAM_WORKSHOP_BATCH_SIZE, STEAM_USER_BATCH_SIZE, STEAM_API_TIMEOUT
 
 STEAM_API_URL = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
 STEAM_USER_API_URL = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/"
@@ -16,7 +17,7 @@ def fetch_published_file_details(ids: List[int]) -> Dict[int, Dict]:
     logger.debug(f"Fetching details for {len(ids)} mod(s)")
     
     results: Dict[int, Dict] = {}
-    for batch in chunked(ids, 50):
+    for batch in chunked(ids, STEAM_WORKSHOP_BATCH_SIZE):
         try:
             logger.debug(f"Processing batch of {len(batch)} mod(s)")
             data = {"itemcount": len(batch)}
@@ -25,7 +26,7 @@ def fetch_published_file_details(ids: List[int]) -> Dict[int, Dict]:
             encoded = urllib.parse.urlencode(data).encode("utf-8")
             req = urllib.request.Request(STEAM_API_URL, method="POST")
             
-            with urllib.request.urlopen(req, data=encoded, timeout=20) as resp:
+            with urllib.request.urlopen(req, data=encoded, timeout=STEAM_API_TIMEOUT) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
                 
             details = payload.get("response", {}).get("publishedfiledetails", [])
@@ -97,7 +98,7 @@ def fetch_steam_user_summaries(steam_ids: List[str], api_key: str) -> Dict[str, 
     results: Dict[str, Dict] = {}
     
     # Steam API allows up to 100 Steam IDs per request
-    for batch in chunked(steam_ids, 100):
+    for batch in chunked(steam_ids, STEAM_USER_BATCH_SIZE):
         try:
             logger.debug(f"Processing user batch of {len(batch)} Steam ID(s)")
             steam_ids_str = ",".join(batch)
@@ -110,7 +111,7 @@ def fetch_steam_user_summaries(steam_ids: List[str], api_key: str) -> Dict[str, 
             url = f"{STEAM_USER_API_URL}?{urllib.parse.urlencode(params)}"
             
             req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            with urllib.request.urlopen(req, timeout=STEAM_API_TIMEOUT) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
                 
             players = payload.get("response", {}).get("players", [])
