@@ -1,6 +1,6 @@
-# Workshop Watcher 
+# Workshop Watcher
 
-A (Vibe-Coded) Steam Workshop monitoring tool that tracks mod updates and sends Discord notifications.
+A (vibe coded) Steam Workshop monitoring tool that tracks mod updates and sends Discord notifications.
 
 ## How It Works
 
@@ -9,12 +9,12 @@ A (Vibe-Coded) Steam Workshop monitoring tool that tracks mod updates and sends 
 3. Sends Discord webhook notifications when mods are updated
 4. Caches Steam user information to display mod author names
 
-Perfect for DayZ server admins or any game that uses Steam Workshop!
+Designed for DayZ server admins or any game that uses Steam Workshop.
 
 ## Requirements
 
 - Python 3.6 or newer
-- No external dependencies! Uses only Python standard library
+- No external dependencies (Python standard library only)
 
 ## Setup
 
@@ -127,20 +127,20 @@ docker run \
 
 This approach ensures your database and config persist outside the container/Nix store.
 
-## What Gets Notified?
+## Notification Content
 
 When a mod updates, Discord receives:
-- 🔔 Mod name and Steam Workshop link
-- 👤 Author name (cached from Steam)
-- 🕒 Update timestamp
-- 🔗 Direct link to the workshop page
-- 📌 Ping roles (if configured)
+- Mod name and Steam Workshop link
+- Author name (cached from Steam)
+- Update timestamp
+- Direct link to the workshop page
+- Ping roles (if configured)
 
 ## Development
 
 ### Running Tests
 
-The project includes a comprehensive test suite with **56 tests** and zero external dependencies:
+The project includes a test suite with 56 tests using Python's built-in unittest module:
 
 ```bash
 # Run all tests
@@ -149,7 +149,7 @@ python -m unittest discover tests -v
 # Run specific test file
 python -m unittest tests.test_validators -v
 
-# Quick demo (no framework required)
+# Quick demo
 python tests/simple_test_demo.py
 ```
 
@@ -157,12 +157,10 @@ See [`tests/README.md`](tests/README.md) for more details.
 
 ### Test Coverage
 
-- ✅ Configuration validators
-- ✅ Database operations  
-- ✅ Utility functions
-- ✅ SQLite isolation (temporary test databases)
-
-Tests run in under 0.4 seconds and have caught real security bugs!
+- Configuration validators
+- Database operations  
+- Utility functions
+- SQLite isolation (temporary test databases)
 
 ## Troubleshooting
 
@@ -181,7 +179,7 @@ Tests run in under 0.4 seconds and have caught real security bugs!
 - Check `--log-level DEBUG` for detailed API responses
 
 ### First run shows all mods as "updated"
-- This is normal! The database is empty on first run
+- This is expected behavior when the database is empty
 - All tracked mods will be added to the database
 - Subsequent runs will only notify about actual updates
 
