@@ -37,8 +37,9 @@ Edit `config/modlist.json`:
 
 ### Option 2: Environment Variables (Override JSON values)
 
-Environment variables take priority over JSON config values:
+Environment variables take priority over JSON config values and command-line defaults:
 
+#### Configuration Overrides
 ```bash
 # Discord webhook URL
 export DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
@@ -48,6 +49,14 @@ export STEAM_API_KEY="YOUR_STEAM_API_KEY_HERE"
 
 # Ping roles (comma-separated Discord role IDs)
 export PING_ROLES="1234567890123456789,9876543210987654321"
+```
+
+#### File Path Overrides
+```bash
+# Override where config/database files are stored (useful for NixOS/containers)
+export CONFIG_PATH="/var/lib/workshop-watcher/config/config.json"
+export MODLIST_PATH="/var/lib/workshop-watcher/config/modlist.json"
+export DB_PATH="/var/lib/workshop-watcher/db/mods.db"
 ```
 
 You can mix both methods - use JSON for defaults and env vars for overrides.
@@ -68,15 +77,20 @@ python3 main.py --update-authors
 python3 main.py --show-updates
 ```
 
-## Docker/Container Usage
+## Docker/Container/NixOS Usage
 
-Environment variables are especially useful when running in containers:
+Environment variables are especially useful when running in containers or NixOS:
 
 ```bash
 docker run \
   -e DISCORD_WEBHOOK="https://discord.com/api/webhooks/..." \
   -e STEAM_API_KEY="YOUR_KEY" \
   -e PING_ROLES="123456789" \
-  -v ./config:/app/config \
+  -e CONFIG_PATH="/data/config.json" \
+  -e MODLIST_PATH="/data/modlist.json" \
+  -e DB_PATH="/data/mods.db" \
+  -v ./data:/data \
   workshop-watcher
 ```
+
+This approach ensures your database and config persist outside the container/Nix store.

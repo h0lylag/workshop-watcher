@@ -13,9 +13,15 @@ from datetime import datetime, UTC
 
 def parse_args():
     ap = argparse.ArgumentParser(description="Monitor Steam Workshop mods and notify Discord of updates.")
-    ap.add_argument("--config", default="config/config.json", help="Path to config JSON (default: config/config.json)")
-    ap.add_argument("--modlist", default="config/modlist.json", help="Path to modlist JSON (default: config/modlist.json; created if missing)")
-    ap.add_argument("--db", default="db/mods.db", help="Path to SQLite database (default: db/mods.db)")
+    
+    # Allow environment variable overrides for file paths
+    default_config = os.getenv("CONFIG_PATH", "config/config.json")
+    default_modlist = os.getenv("MODLIST_PATH", "config/modlist.json")
+    default_db = os.getenv("DB_PATH", "db/mods.db")
+    
+    ap.add_argument("--config", default=default_config, help=f"Path to config JSON (default: {default_config}, env: CONFIG_PATH)")
+    ap.add_argument("--modlist", default=default_modlist, help=f"Path to modlist JSON (default: {default_modlist}, env: MODLIST_PATH)")
+    ap.add_argument("--db", default=default_db, help=f"Path to SQLite database (default: {default_db}, env: DB_PATH)")
     ap.add_argument("--watch", type=int, help="Interval seconds to poll repeatedly (omit to run once)")
     ap.add_argument("--update-authors", action="store_true", help="Update author names for existing mods and exit")
     ap.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Logging level (default: INFO)")
