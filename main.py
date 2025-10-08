@@ -3,6 +3,7 @@ from utils.watcher import poll_once  # type: ignore
 from db.db import connect_db  # type: ignore
 from utils.user_resolver import update_mod_author_names  # type: ignore
 from utils.logger import setup_logging, get_logger  # type: ignore
+from utils.validators import validate_steam_api_key, validate_discord_webhook, validate_workshop_id, validate_role_id
 
 import argparse
 import os
@@ -57,6 +58,52 @@ def main():
             "  4. Files are readable"
         )
         sys.exit(2)
+
+    # Validate configuration
+    webhook = cfg.get("discord_webhook")
+    if webhook and not validate_discord_webhook(webhook):
+        logger.error(
+            f"Invalid Discord webhook URL format: {webhook[:50]}...\n"
+            "  Expected format: https://discord.com/api/webhooks/..."
+        )
+        sys.exit(2)
+    
+    api_key = cfg.get("steam_api_key")
+    if api_key and api_key != "PUT_STEAM_API_KEY_HERE" and not validate_steam_api_key(api_key):
+        logger.warning(
+            f"Steam API key doesn't match expected format (32 hexadecimal characters)\n"
+            "  Your key: {api_key[:8]}... (length: {len(api_key)})\n"
+            "  This may cause issues with Steam API requests"
+        )
+    
+    # Validate workshop item IDs
+    workshop_items = cfg.get("workshop_items", [])
+    invalid_ids = []
+    for item in workshop_items:
+        if not validate_workshop_id(item.get("id")):
+            invalid_ids.append(item.get("id"))
+    
+    if invalid_ids:
+        logger.error(
+            f"Invalid workshop item IDs found: {invalid_ids}\n"
+            "  Workshop IDs must be positive integers"
+        )
+        sys.exit(2)
+    
+    # Validate ping role IDs
+    ping_roles = cfg.get("ping_roles", [])
+    if ping_roles:
+        invalid_roles = [rid for rid in ping_roles if not validate_role_id(rid)]
+        if invalid_roles:
+            logger.warning(
+                f"Invalid Discord role IDs found: {invalid_roles}\n"
+                "  Role IDs should be positive integers (typically 17-19 digits)\n"
+                "  These will be ignored in notifications"
+            )
+            # Filter out invalid role IDs
+            cfg["ping_roles"] = [rid for rid in ping_roles if validate_role_id(rid)]
+
+    logger.info("Configuration validated successfully")
 
     # New quick command: show updates and exit
     if getattr(args, "show_updates", False):
